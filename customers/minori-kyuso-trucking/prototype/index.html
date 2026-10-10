@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>積み込みQR照合（みのり急送 お試し版）</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  /*
+    layout: 1画面アプリ。上部にタブ（スキャン／テスト用QR）、下にリストとステータス
+    color: 倉庫の薄暗い環境でも見やすいよう高コントラスト。進捗=accent、警告=warn、完了=ok
+    type: 見出しは太め・大きめのゴシック、本文・ラベルは読みやすいシステムフォント
+  */
+  :root{
+    --bg:#f6f5f2; --panel:#ffffff; --ink:#1b2430; --sub:#6b7280;
+    --line:#e3e1db; --accent:#b2502b; --ok:#1f8a4c; --warn:#b4201f;
+    --ok-bg:#e8f5ec; --warn-bg:#fbe9e8; --chip:#efece5;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#15181d; --panel:#1f232a; --ink:#f1efe9; --sub:#9aa0aa;
+      --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64;
+      --ok-bg:#163522; --warn-bg:#3a1a19; --chip:#262b33;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#15181d; --panel:#1f232a; --ink:#f1efe9; --sub:#9aa0aa;
+    --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64;
+    --ok-bg:#163522; --warn-bg:#3a1a19; --chip:#262b33;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    padding-inline:16px;
+  }
+  .wrap{max-width:560px; margin:0 auto; display:flex; flex-direction:column; gap:14px; padding-block:16px;}
+  header{display:flex; flex-direction:column; gap:4px;}
+  h1{font-size:19px; margin:0; letter-spacing:.01em;}
+  .sub{color:var(--sub); font-size:13px; margin:0;}
+  nav{display:flex; gap:8px;}
+  nav button{
+    flex:1; padding:10px 0; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel); color:var(--ink); font-size:14px; font-weight:600;
+    cursor:pointer;
+  }
+  nav button[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px;}
+  .status-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .count{font-variant-numeric:tabular-nums; font-size:28px; font-weight:700;}
+  .count small{font-size:13px; font-weight:500; color:var(--sub); margin-left:4px;}
+  .bar{height:8px; border-radius:99px; background:var(--chip); overflow:hidden; margin-top:10px;}
+  .bar > div{height:100%; background:var(--accent); transition:width .25s ease;}
+
+  video{width:100%; border-radius:12px; background:#000; aspect-ratio:3/4; object-fit:cover;}
+  .scan-controls{display:flex; gap:8px; margin-top:10px;}
+  button.primary{
+    background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:11px 16px; font-size:14px; font-weight:700; cursor:pointer; flex:1;
+  }
+  button.ghost{
+    background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:10px;
+    padding:11px 16px; font-size:14px; font-weight:600; cursor:pointer;
+  }
+  .toast{
+    border-radius:10px; padding:10px 12px; font-size:14px; font-weight:600; display:none;
+  }
+  .toast.ok{display:block; background:var(--ok-bg); color:var(--ok);}
+  .toast.warn{display:block; background:var(--warn-bg); color:var(--warn);}
+
+  ul.list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px;}
+  li.item{
+    display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px;
+    background:var(--chip); border:1px solid transparent;
+  }
+  li.item.done{background:var(--ok-bg); border-color:var(--ok);}
+  .dot{width:10px; height:10px; border-radius:99px; background:var(--sub); flex:none;}
+  li.item.done .dot{background:var(--ok);}
+  .item-name{flex:1; min-width:0; font-size:14px;}
+  .item-code{font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums;}
+
+  .qr-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
+  .qr-tile{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center;}
+  .qr-tile canvas,.qr-tile img{max-width:100%; height:auto;}
+  .qr-tile .label{font-size:12px; margin-top:6px; color:var(--ink);}
+  footer{color:var(--sub); font-size:12px; text-align:center; padding-block:6px 20px;}
+  [hidden]{display:none!important;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>積み込みQR照合</h1>
+    <p class="sub">有限会社みのり急送 お試し版・本日のローディングリスト照合</p>
+  </header>
+
+  <nav>
+    <button id="tabScanBtn" aria-pressed="true">スキャン</button>
+    <button id="tabQrBtn" aria-pressed="false">テスト用QR</button>
+  </nav>
+
+  <section id="panelScan" class="card">
+    <div class="status-row">
+      <div class="count"><span id="scannedCount">0</span><small>/<span id="totalCount">0</span> 件</small></div>
+      <div id="departOk" class="toast ok" hidden>出発OKです</div>
+      <div id="departWarn" class="toast warn" hidden><span id="missingCount">0</span>件 未確認</div>
+    </div>
+    <div class="bar"><div id="progressBar" style="width:0%"></div></div>
+
+    <video id="video" playsinline muted hidden></video>
+    <canvas id="canvas" hidden></canvas>
+
+    <div class="scan-controls">
+      <button class="primary" id="startBtn">カメラでスキャン開始</button>
+      <button class="ghost" id="stopBtn" hidden>停止</button>
+    </div>
+    <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
+  </section>
+
+  <section class="card">
+    <p class="sub" style="margin:0 0 10px;">本日のリスト</p>
+    <ul class="list" id="itemList"></ul>
+  </section>
+
+  <section id="panelQr" class="card" hidden>
+    <p class="sub" style="margin:0 0 10px;">印刷されたQRがまだない商品を、この画面に表示してテストできます（別の端末のカメラで読み取ってください）。</p>
+    <div class="qr-grid" id="qrGrid"></div>
+  </section>
+
+  <footer>精神と時の部屋・仮想フェーズのお試しプロトタイプ</footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // 本日のローディングリスト（サンプルデータ。実運用では配送システムから読み込む想定）
+  var todaysList = [
+    {code:"MINORI-001", name:"段ボール A（キッチン用品）"},
+    {code:"MINORI-002", name:"段ボール B（日用雑貨）"},
+    {code:"MINORI-003", name:"保冷ボックス（食品）"},
+    {code:"MINORI-004", name:"長尺物（カーテンレール）"},
+    {code:"MINORI-005", name:"段ボール C（書籍）"},
+    {code:"MINORI-006", name:"パレット単位（飲料ケース）"}
+  ];
+
+  var scanned = Object.create(null);
+
+  var scannedCountEl = document.getElementById("scannedCount");
+  var totalCountEl = document.getElementById("totalCount");
+  var progressBar = document.getElementById("progressBar");
+  var departOk = document.getElementById("departOk");
+  var departWarn = document.getElementById("departWarn");
+  var missingCountEl = document.getElementById("missingCount");
+  var itemList = document.getElementById("itemList");
+  var scanMsg = document.getElementById("scanMsg");
+
+  function renderList(){
+    itemList.innerHTML = "";
+    todaysList.forEach(function(it){
+      var li = document.createElement("li");
+      li.className = "item" + (scanned[it.code] ? " done" : "");
+      li.innerHTML =
+        '<span class="dot"></span>' +
+        '<span class="item-name">' + it.name + '</span>' +
+        '<span class="item-code">' + it.code + '</span>';
+      itemList.appendChild(li);
+    });
+    var count = Object.keys(scanned).length;
+    var total = todaysList.length;
+    scannedCountEl.textContent = count;
+    totalCountEl.textContent = total;
+    progressBar.style.width = (total ? (count/total*100) : 0) + "%";
+    if (count >= total && total > 0){
+      departOk.hidden = false; departWarn.hidden = true;
+    } else {
+      departOk.hidden = true; departWarn.hidden = false;
+      missingCountEl.textContent = total - count;
+    }
+  }
+
+  function showMsg(text, kind){
+    scanMsg.textContent = text;
+    scanMsg.className = "toast " + kind;
+  }
+
+  function handleCode(code){
+    var found = todaysList.some(function(it){ return it.code === code; });
+    if (!found){
+      showMsg("リストにないQRです: " + code, "warn");
+      return;
+    }
+    if (scanned[code]){
+      showMsg(code + " はスキャン済みです", "warn");
+      return;
+    }
+    scanned[code] = true;
+    var item = todaysList.filter(function(it){ return it.code === code; })[0];
+    showMsg("確認OK: " + item.name, "ok");
+    renderList();
+  }
+
+  // --- カメラスキャン ---
+  var video = document.getElementById("video");
+  var canvas = document.getElementById("canvas");
+  var ctx = canvas.getContext("2d", {willReadFrequently:true});
+  var startBtn = document.getElementById("startBtn");
+  var stopBtn = document.getElementById("stopBtn");
+  var stream = null;
+  var rafId = null;
+  var lastCode = null;
+  var lastCodeAt = 0;
+
+  function tick(){
+    if (video.readyState === video.HAVE_ENOUGH_DATA){
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var result = window.jsQR ? jsQR(img.data, img.width, img.height) : null;
+      if (result && result.data){
+        var now = Date.now();
+        if (result.data !== lastCode || now - lastCodeAt > 1200){
+          lastCode = result.data; lastCodeAt = now;
+          handleCode(result.data.trim());
+        }
+      }
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function startScan(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+      showMsg("このブラウザではカメラが使えません。手入力で試してください。", "warn");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+      .then(function(s){
+        stream = s;
+        video.srcObject = s;
+        video.hidden = false;
+        video.play();
+        startBtn.hidden = true;
+        stopBtn.hidden = false;
+        showMsg("カメラ起動中。QRコードを映してください。", "ok");
+        rafId = requestAnimationFrame(tick);
+      })
+      .catch(function(err){
+        showMsg("カメラを開始できませんでした（" + err.message + "）", "warn");
+      });
+  }
+
+  function stopScan(){
+    if (rafId) cancelAnimationFrame(rafId);
+    if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
+    stream = null;
+    video.hidden = true;
+    startBtn.hidden = false;
+    stopBtn.hidden = true;
+  }
+
+  startBtn.addEventListener("click", startScan);
+  stopBtn.addEventListener("click", stopScan);
+
+  // --- タブ切り替え ---
+  var tabScanBtn = document.getElementById("tabScanBtn");
+  var tabQrBtn = document.getElementById("tabQrBtn");
+  var panelScan = document.getElementById("panelScan");
+  var panelQr = document.getElementById("panelQr");
+
+  tabScanBtn.addEventListener("click", function(){
+    tabScanBtn.setAttribute("aria-pressed","true");
+    tabQrBtn.setAttribute("aria-pressed","false");
+    panelScan.hidden = false; panelQr.hidden = true;
+  });
+  tabQrBtn.addEventListener("click", function(){
+    tabScanBtn.setAttribute("aria-pressed","false");
+    tabQrBtn.setAttribute("aria-pressed","true");
+    panelScan.hidden = true; panelQr.hidden = false;
+    stopScan();
+  });
+
+  // --- テスト用QR生成 ---
+  var qrGrid = document.getElementById("qrGrid");
+  todaysList.forEach(function(it){
+    var tile = document.createElement("div");
+    tile.className = "qr-tile";
+    var holder = document.createElement("div");
+    tile.appendChild(holder);
+    var label = document.createElement("div");
+    label.className = "label";
+    label.textContent = it.name;
+    tile.appendChild(label);
+    qrGrid.appendChild(tile);
+    if (window.QRCode){
+      new QRCode(holder, {text: it.code, width:120, height:120});
+    } else {
+      holder.textContent = it.code;
+    }
+  });
+
+  renderList();
+})();
+</script>
+</body>
+</html>
