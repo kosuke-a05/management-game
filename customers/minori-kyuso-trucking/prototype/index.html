@@ -8,28 +8,28 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" onerror="window.__qrcodeLoadFailed=true"></script>
 <style>
   /*
-    layout: 1画面アプリ。上部にタブ（スキャン／テスト用QR）、下にリストとステータス
-    color: 倉庫の薄暗い環境でも見やすいよう高コントラスト。進捗=accent、警告=warn、完了=ok
+    layout: 1画面アプリ。上部にタブ（スキャン／テスト用QR／データ取込）、下にリストとステータス
+    color: 倉庫の薄暗い環境でも見やすいよう高コントラスト。進捗=accent、警告=warn、完了=ok、数量相違=caution
     type: 見出しは太め・大きめのゴシック、本文・ラベルは読みやすいシステムフォント
   */
   :root{
     --bg:#f6f5f2; --panel:#ffffff; --ink:#1b2430; --sub:#6b7280;
-    --line:#e3e1db; --accent:#b2502b; --ok:#1f8a4c; --warn:#b4201f;
-    --ok-bg:#e8f5ec; --warn-bg:#fbe9e8; --chip:#efece5;
+    --line:#e3e1db; --accent:#b2502b; --ok:#1f8a4c; --warn:#b4201f; --caution:#9a6b12;
+    --ok-bg:#e8f5ec; --warn-bg:#fbe9e8; --caution-bg:#fbf1e0; --chip:#efece5;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#15181d; --panel:#1f232a; --ink:#f1efe9; --sub:#9aa0aa;
-      --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64;
-      --ok-bg:#163522; --warn-bg:#3a1a19; --chip:#262b33;
+      --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64; --caution:#e8b85c;
+      --ok-bg:#163522; --warn-bg:#3a1a19; --caution-bg:#3a2e15; --chip:#262b33;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"]{
     --bg:#15181d; --panel:#1f232a; --ink:#f1efe9; --sub:#9aa0aa;
-    --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64;
-    --ok-bg:#163522; --warn-bg:#3a1a19; --chip:#262b33;
+    --line:#30353d; --accent:#e08a5c; --ok:#5fd889; --warn:#ff6b64; --caution:#e8b85c;
+    --ok-bg:#163522; --warn-bg:#3a1a19; --caution-bg:#3a2e15; --chip:#262b33;
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
@@ -46,7 +46,7 @@
   nav{display:flex; gap:8px;}
   nav button{
     flex:1; padding:10px 0; border-radius:10px; border:1px solid var(--line);
-    background:var(--panel); color:var(--ink); font-size:14px; font-weight:600;
+    background:var(--panel); color:var(--ink); font-size:13px; font-weight:600;
     cursor:pointer;
   }
   nav button[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -57,6 +57,14 @@
   .count small{font-size:13px; font-weight:500; color:var(--sub); margin-left:4px;}
   .bar{height:8px; border-radius:99px; background:var(--chip); overflow:hidden; margin-top:10px;}
   .bar > div{height:100%; background:var(--accent); transition:width .25s ease;}
+
+  .cust-chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;}
+  .cust-chip{
+    padding:7px 12px; border-radius:99px; border:1px solid var(--line); background:var(--chip);
+    color:var(--ink); font-size:12.5px; font-weight:600; cursor:pointer;
+  }
+  .cust-chip[aria-pressed="true"]{ background:var(--accent); border-color:var(--accent); color:#fff; }
+  .cust-chip .n{opacity:.75; font-weight:500; margin-left:4px;}
 
   video{width:100%; border-radius:12px; background:#000; aspect-ratio:3/4; object-fit:cover;}
   .scan-controls{display:flex; gap:8px; margin-top:10px;}
@@ -73,6 +81,33 @@
   }
   .toast.ok{display:block; background:var(--ok-bg); color:var(--ok);}
   .toast.warn{display:block; background:var(--warn-bg); color:var(--warn);}
+  .toast.caution{display:block; background:var(--caution-bg); color:var(--caution);}
+
+  .qty-card{
+    display:none; background:var(--caution-bg); border:1px solid var(--caution); border-radius:12px;
+    padding:12px; margin-top:10px;
+  }
+  .qty-card.show{display:block;}
+  .qty-card .ttl{font-weight:700; font-size:14px; margin-bottom:2px;}
+  .qty-card .exp{font-size:12.5px; color:var(--sub); margin-bottom:8px;}
+  .qty-row{display:flex; align-items:center; gap:8px;}
+  .qty-row button{
+    width:40px; height:40px; border-radius:10px; border:1px solid var(--line); background:var(--panel);
+    font-size:18px; font-weight:700; cursor:pointer; color:var(--ink);
+  }
+  .qty-row input{
+    width:64px; text-align:center; font-size:18px; font-weight:700; padding:8px 0; border-radius:10px;
+    border:1px solid var(--line); background:var(--bg); color:var(--ink);
+  }
+  .qty-row .confirm{
+    flex:1; background:var(--accent); color:#fff; border:none; border-radius:10px; font-weight:700;
+    font-size:14px; padding:0 14px; height:40px; cursor:pointer;
+  }
+
+  .cust-section{margin-bottom:14px;}
+  .cust-section:last-child{margin-bottom:0;}
+  .cust-section h3{font-size:13.5px; margin:0 0 8px; display:flex; justify-content:space-between; align-items:baseline;}
+  .cust-section h3 .tag{font-size:12px; color:var(--sub); font-weight:500;}
 
   ul.list{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px;}
   li.item{
@@ -80,9 +115,12 @@
     background:var(--chip); border:1px solid transparent;
   }
   li.item.done{background:var(--ok-bg); border-color:var(--ok);}
+  li.item.caution{background:var(--caution-bg); border-color:var(--caution);}
   .dot{width:10px; height:10px; border-radius:99px; background:var(--sub); flex:none;}
   li.item.done .dot{background:var(--ok);}
+  li.item.caution .dot{background:var(--caution);}
   .item-name{flex:1; min-width:0; font-size:14px;}
+  .item-qty{font-size:11.5px; color:var(--sub); margin-left:6px;}
   .item-code{font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums;}
 
   .qr-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
@@ -95,6 +133,16 @@
   }
   .qr-zoom-inner{background:#fff; border-radius:16px; padding:24px; text-align:center; max-width:92vw;}
   .qr-zoom-inner canvas,.qr-zoom-inner img{max-width:80vw; max-height:60vh; width:auto; height:auto;}
+
+  .import-row{display:flex; flex-direction:column; gap:10px;}
+  textarea#csvText{
+    width:100%; min-height:120px; border-radius:10px; border:1px solid var(--line);
+    background:var(--bg); color:var(--ink); font-size:13px; padding:10px; font-family:ui-monospace,monospace;
+    resize:vertical;
+  }
+  input[type="file"]{font-size:13px; color:var(--ink);}
+  code.inline{background:var(--chip); padding:2px 5px; border-radius:6px; font-size:12px;}
+
   footer{color:var(--sub); font-size:12px; text-align:center; padding-block:6px 20px;}
   [hidden]{display:none!important;}
 </style>
@@ -103,18 +151,21 @@
 <div class="wrap">
   <header>
     <h1>積み込みQR照合</h1>
-    <p class="sub">有限会社みのり急送 お試し版・本日のローディングリスト照合</p>
+    <p class="sub">有限会社みのり急送 お試し版・本日のローディングリスト照合（顧客別）</p>
   </header>
 
   <nav>
     <button id="tabScanBtn" aria-pressed="true">スキャン</button>
     <button id="tabQrBtn" aria-pressed="false">テスト用QR</button>
+    <button id="tabImportBtn" aria-pressed="false">データ取込</button>
   </nav>
 
   <section id="panelScan" class="card">
+    <div class="cust-chips" id="custChips"></div>
+
     <div class="status-row">
-      <div class="count"><span id="scannedCount">0</span><small>/<span id="totalCount">0</span> 件</small></div>
-      <div id="departOk" class="toast ok" hidden>出発OKです</div>
+      <div class="count"><span id="scannedCount">0</span><small>/<span id="totalCount">0</span> 件（選択中の顧客）</small></div>
+      <div id="departOk" class="toast ok" hidden>この顧客分はOKです</div>
       <div id="departWarn" class="toast warn" hidden><span id="missingCount">0</span>件 未確認</div>
     </div>
     <div class="bar"><div id="progressBar" style="width:0%"></div></div>
@@ -127,6 +178,18 @@
       <button class="ghost" id="stopBtn" hidden>停止</button>
     </div>
     <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
+
+    <div id="qtyCard" class="qty-card">
+      <div class="ttl" id="qtyItemName"></div>
+      <div class="exp" id="qtyExpected"></div>
+      <div class="qty-row">
+        <button type="button" id="qtyMinus">−</button>
+        <input id="qtyInput" type="number" inputmode="numeric" min="0">
+        <button type="button" id="qtyPlus">＋</button>
+        <button type="button" class="confirm" id="qtyConfirmBtn">この数で確定</button>
+      </div>
+    </div>
+
     <div id="libStatus" class="sub" style="margin-top:8px; padding:6px 10px; background:var(--chip); border-radius:8px; display:inline-block;"></div>
 
     <details style="margin-top:10px;">
@@ -139,13 +202,28 @@
   </section>
 
   <section class="card">
-    <p class="sub" style="margin:0 0 10px;">本日のリスト</p>
-    <ul class="list" id="itemList"></ul>
+    <p class="sub" style="margin:0 0 10px;">本日のリスト（顧客別）</p>
+    <div id="itemList"></div>
   </section>
 
   <section id="panelQr" class="card" hidden>
     <p class="sub" style="margin:0 0 10px;">印刷されたQRがまだない商品を、この画面に表示してテストできます（別の端末のカメラで読み取ってください）。タップすると1つだけ大きく表示されます。</p>
-    <div class="qr-grid" id="qrGrid"></div>
+    <div id="qrByCustomer"></div>
+  </section>
+
+  <section id="panelImport" class="card" hidden>
+    <p class="sub" style="margin:0 0 6px;">配送管理表（Excel）をCSV形式で書き出して、ここに貼り付けるかファイルで読み込むと、本日のリストに反映されます。</p>
+    <p class="sub" style="margin:0 0 10px;">形式：1行目は見出し、2行目以降が商品データです。<br>
+      <code class="inline">顧客名,商品コード,商品名,数量</code></p>
+    <div class="import-row">
+      <input type="file" id="csvFile" accept=".csv,text/csv">
+      <textarea id="csvText" placeholder="顧客名,商品コード,商品名,数量&#10;株式会社〇〇,MINORI-101,段ボール（雑貨）,2&#10;株式会社〇〇,MINORI-102,保冷ボックス,1&#10;△△商店,MINORI-201,パレット（飲料）,1"></textarea>
+      <div style="display:flex; gap:8px;">
+        <button class="primary" id="csvApplyBtn" style="flex:none; padding-inline:20px;">このリストを反映する</button>
+        <button class="ghost" id="csvSampleBtn">サンプルに戻す</button>
+      </div>
+      <div id="csvMsg" class="toast" style="margin:0;"></div>
+    </div>
   </section>
 
   <div id="qrZoom" class="qr-zoom" hidden>
@@ -162,18 +240,50 @@
 (function(){
   "use strict";
 
-  // 本日のローディングリスト（サンプルデータ。実運用では配送システムから読み込む想定）
-  var todaysList = [
-    {code:"MINORI-001", name:"段ボール A（キッチン用品）"},
-    {code:"MINORI-002", name:"段ボール B（日用雑貨）"},
-    {code:"MINORI-003", name:"保冷ボックス（食品）"},
-    {code:"MINORI-004", name:"長尺物（カーテンレール）"},
-    {code:"MINORI-005", name:"段ボール C（書籍）"},
-    {code:"MINORI-006", name:"パレット単位（飲料ケース）"}
-  ];
+  // --- サンプルデータ（本日のローディングリスト。顧客ごとに分かれている想定） ---
+  // 実運用では「データ取込」タブからCSVで差し替える想定。
+  function sampleCustomers(){
+    return [
+      {
+        name: "有限会社みのり急送 ／ 配送先A（〇〇商店）",
+        items: [
+          {code:"MINORI-001", name:"段ボール A（キッチン用品）", qty:1},
+          {code:"MINORI-002", name:"段ボール B（日用雑貨）", qty:2},
+          {code:"MINORI-003", name:"保冷ボックス（食品）", qty:1}
+        ]
+      },
+      {
+        name: "有限会社みのり急送 ／ 配送先B（△△様邸）",
+        items: [
+          {code:"MINORI-004", name:"長尺物（カーテンレール）", qty:1},
+          {code:"MINORI-005", name:"段ボール C（書籍）", qty:3},
+          {code:"MINORI-006", name:"パレット単位（飲料ケース）", qty:1}
+        ]
+      }
+    ];
+  }
 
-  var scanned = Object.create(null);
+  var customers = sampleCustomers();
+  var scanned = Object.create(null); // code -> {qty, mismatch:bool}
+  var activeCustomerIdx = 0;
 
+  function allItemsFlat(){
+    var out = [];
+    customers.forEach(function(c, ci){
+      c.items.forEach(function(it){ out.push({code:it.code, name:it.name, qty:it.qty, custIdx:ci}); });
+    });
+    return out;
+  }
+  function findItem(code){
+    var hit = null;
+    customers.forEach(function(c, ci){
+      c.items.forEach(function(it){ if (it.code === code) hit = {item:it, custIdx:ci}; });
+    });
+    return hit;
+  }
+
+  // --- DOM refs ---
+  var custChips = document.getElementById("custChips");
   var scannedCountEl = document.getElementById("scannedCount");
   var totalCountEl = document.getElementById("totalCount");
   var progressBar = document.getElementById("progressBar");
@@ -184,19 +294,35 @@
   var scanMsg = document.getElementById("scanMsg");
   var libStatus = document.getElementById("libStatus");
 
-  function renderList(){
-    itemList.innerHTML = "";
-    todaysList.forEach(function(it){
-      var li = document.createElement("li");
-      li.className = "item" + (scanned[it.code] ? " done" : "");
-      li.innerHTML =
-        '<span class="dot"></span>' +
-        '<span class="item-name">' + it.name + '</span>' +
-        '<span class="item-code">' + it.code + '</span>';
-      itemList.appendChild(li);
+  var qtyCard = document.getElementById("qtyCard");
+  var qtyItemName = document.getElementById("qtyItemName");
+  var qtyExpected = document.getElementById("qtyExpected");
+  var qtyInput = document.getElementById("qtyInput");
+  var qtyMinus = document.getElementById("qtyMinus");
+  var qtyPlus = document.getElementById("qtyPlus");
+  var qtyConfirmBtn = document.getElementById("qtyConfirmBtn");
+  var pendingQtyCode = null;
+
+  function renderChips(){
+    custChips.innerHTML = "";
+    if (customers.length <= 1){ custChips.hidden = true; return; }
+    custChips.hidden = false;
+    customers.forEach(function(c, ci){
+      var done = c.items.filter(function(it){ return scanned[it.code]; }).length;
+      var btn = document.createElement("button");
+      btn.className = "cust-chip";
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", ci === activeCustomerIdx ? "true" : "false");
+      btn.innerHTML = c.name.split("／").pop() + '<span class="n">' + done + "/" + c.items.length + "</span>";
+      btn.addEventListener("click", function(){ activeCustomerIdx = ci; renderAll(); });
+      custChips.appendChild(btn);
     });
-    var count = Object.keys(scanned).length;
-    var total = todaysList.length;
+  }
+
+  function renderProgress(){
+    var c = customers[activeCustomerIdx];
+    var count = c.items.filter(function(it){ return scanned[it.code]; }).length;
+    var total = c.items.length;
     scannedCountEl.textContent = count;
     totalCountEl.textContent = total;
     progressBar.style.width = (total ? (count/total*100) : 0) + "%";
@@ -206,6 +332,37 @@
       departOk.hidden = true; departWarn.hidden = false;
       missingCountEl.textContent = total - count;
     }
+  }
+
+  function renderList(){
+    itemList.innerHTML = "";
+    customers.forEach(function(c){
+      var sec = document.createElement("div");
+      sec.className = "cust-section";
+      var doneCount = c.items.filter(function(it){ return scanned[it.code]; }).length;
+      sec.innerHTML = '<h3>' + c.name + ' <span class="tag">' + doneCount + "/" + c.items.length + "件</span></h3>";
+      var ul = document.createElement("ul");
+      ul.className = "list";
+      c.items.forEach(function(it){
+        var rec = scanned[it.code];
+        var li = document.createElement("li");
+        li.className = "item" + (rec ? (rec.mismatch ? " caution" : " done") : "");
+        var qtyBadge = it.qty > 1 ? '<span class="item-qty">必要 ' + it.qty + '個' + (rec ? "／確認 " + rec.qty + "個" : "") + '</span>' : "";
+        li.innerHTML =
+          '<span class="dot"></span>' +
+          '<span class="item-name">' + it.name + qtyBadge + '</span>' +
+          '<span class="item-code">' + it.code + '</span>';
+        ul.appendChild(li);
+      });
+      sec.appendChild(ul);
+      itemList.appendChild(sec);
+    });
+  }
+
+  function renderAll(){
+    renderChips();
+    renderProgress();
+    renderList();
   }
 
   function showMsg(text, kind){
@@ -226,9 +383,47 @@
     return {jsQrOk:jsQrOk, qrCodeOk:qrCodeOk};
   }
 
+  // --- 数量確認（ワンタップ確定・相違時のみ入力し直す） ---
+  function openQtyConfirm(item){
+    pendingQtyCode = item.code;
+    qtyItemName.textContent = item.name + "（" + item.code + "）";
+    qtyExpected.textContent = "予定数量: " + item.qty + "個　※合っていればそのまま「この数で確定」を押してください";
+    qtyInput.value = item.qty;
+    qtyCard.classList.add("show");
+    qtyInput.focus();
+    qtyInput.select();
+  }
+  function closeQtyConfirm(){
+    pendingQtyCode = null;
+    qtyCard.classList.remove("show");
+  }
+  qtyMinus.addEventListener("click", function(){
+    var v = parseInt(qtyInput.value, 10); if (isNaN(v)) v = 0;
+    qtyInput.value = Math.max(0, v - 1);
+  });
+  qtyPlus.addEventListener("click", function(){
+    var v = parseInt(qtyInput.value, 10); if (isNaN(v)) v = 0;
+    qtyInput.value = v + 1;
+  });
+  qtyConfirmBtn.addEventListener("click", function(){
+    if (!pendingQtyCode) return;
+    var hit = findItem(pendingQtyCode);
+    if (!hit) { closeQtyConfirm(); return; }
+    var entered = parseInt(qtyInput.value, 10); if (isNaN(entered)) entered = 0;
+    var mismatch = entered !== hit.item.qty;
+    scanned[pendingQtyCode] = {qty: entered, mismatch: mismatch};
+    if (mismatch){
+      showMsg("数量相違を記録しました: " + hit.item.name + "（予定" + hit.item.qty + " → 実際" + entered + "）事務所で確認してください", "caution");
+    } else {
+      showMsg("確認OK: " + hit.item.name + "（" + entered + "個）", "ok");
+    }
+    closeQtyConfirm();
+    renderAll();
+  });
+
   function handleCode(code){
-    var found = todaysList.some(function(it){ return it.code === code; });
-    if (!found){
+    var hit = findItem(code);
+    if (!hit){
       showMsg("リストにないQRです: " + code, "warn");
       return;
     }
@@ -236,10 +431,17 @@
       showMsg(code + " はスキャン済みです", "warn");
       return;
     }
-    scanned[code] = true;
-    var item = todaysList.filter(function(it){ return it.code === code; })[0];
-    showMsg("確認OK: " + item.name, "ok");
-    renderList();
+    // 1個だけの商品はワンタップの手間も不要にする（即確定）
+    if (hit.item.qty <= 1){
+      scanned[code] = {qty: hit.item.qty, mismatch:false};
+      showMsg("確認OK: " + hit.item.name, "ok");
+      renderAll();
+      return;
+    }
+    // 複数個ある商品だけ、数量確認カードを出す（予定数で初期表示・合っていればワンタップで確定）
+    activeCustomerIdx = hit.custIdx;
+    openQtyConfirm(hit.item);
+    renderAll();
   }
 
   // --- カメラスキャン ---
@@ -326,58 +528,170 @@
   // --- タブ切り替え ---
   var tabScanBtn = document.getElementById("tabScanBtn");
   var tabQrBtn = document.getElementById("tabQrBtn");
+  var tabImportBtn = document.getElementById("tabImportBtn");
   var panelScan = document.getElementById("panelScan");
   var panelQr = document.getElementById("panelQr");
+  var panelImport = document.getElementById("panelImport");
 
-  tabScanBtn.addEventListener("click", function(){
-    tabScanBtn.setAttribute("aria-pressed","true");
-    tabQrBtn.setAttribute("aria-pressed","false");
-    panelScan.hidden = false; panelQr.hidden = true;
-  });
-  tabQrBtn.addEventListener("click", function(){
-    tabScanBtn.setAttribute("aria-pressed","false");
-    tabQrBtn.setAttribute("aria-pressed","true");
-    panelScan.hidden = true; panelQr.hidden = false;
-    stopScan();
-  });
+  function setTab(which){
+    tabScanBtn.setAttribute("aria-pressed", which === "scan" ? "true" : "false");
+    tabQrBtn.setAttribute("aria-pressed", which === "qr" ? "true" : "false");
+    tabImportBtn.setAttribute("aria-pressed", which === "import" ? "true" : "false");
+    panelScan.hidden = which !== "scan";
+    panelQr.hidden = which !== "qr";
+    panelImport.hidden = which !== "import";
+    if (which !== "scan") stopScan();
+    if (which === "qr") renderQrGrid();
+  }
+  tabScanBtn.addEventListener("click", function(){ setTab("scan"); });
+  tabQrBtn.addEventListener("click", function(){ setTab("qr"); });
+  tabImportBtn.addEventListener("click", function(){ setTab("import"); });
 
-  // --- テスト用QR生成 ---
-  // 誤り訂正レベルは既定のH(高)のままだと同じサイズでもコードが細かくなり、
-  // 画面越しのカメラ読み取りで失敗しやすくなるため、短いコードには十分なL(低)を使う。
+  // --- テスト用QR生成（顧客ごとにグループ表示、タップで拡大） ---
   var qrCorrectLevel = window.QRCode ? QRCode.CorrectLevel.L : null;
-  var qrGrid = document.getElementById("qrGrid");
+  var qrByCustomer = document.getElementById("qrByCustomer");
   var qrZoom = document.getElementById("qrZoom");
   var qrZoomHolder = document.getElementById("qrZoomHolder");
 
-  todaysList.forEach(function(it){
-    var tile = document.createElement("div");
-    tile.className = "qr-tile";
-    var holder = document.createElement("div");
-    tile.appendChild(holder);
-    var label = document.createElement("div");
-    label.className = "label";
-    label.textContent = it.name + "（" + it.code + "）";
-    tile.appendChild(label);
-    qrGrid.appendChild(tile);
-    if (window.QRCode){
-      new QRCode(holder, {text: it.code, width:200, height:200, correctLevel: qrCorrectLevel});
-    } else {
-      holder.textContent = it.code;
-    }
-    tile.addEventListener("click", function(){
-      qrZoomHolder.innerHTML = "";
-      if (window.QRCode){
-        new QRCode(qrZoomHolder, {text: it.code, width:320, height:320, correctLevel: qrCorrectLevel});
-      } else {
-        qrZoomHolder.textContent = it.code;
-      }
-      qrZoom.hidden = false;
+  function renderQrGrid(){
+    qrByCustomer.innerHTML = "";
+    customers.forEach(function(c){
+      var sec = document.createElement("div");
+      sec.className = "cust-section";
+      sec.innerHTML = '<h3>' + c.name + '</h3>';
+      var grid = document.createElement("div");
+      grid.className = "qr-grid";
+      c.items.forEach(function(it){
+        var tile = document.createElement("div");
+        tile.className = "qr-tile";
+        var holder = document.createElement("div");
+        tile.appendChild(holder);
+        var label = document.createElement("div");
+        label.className = "label";
+        label.textContent = it.name + "（" + it.code + (it.qty > 1 ? " ×" + it.qty : "") + "）";
+        tile.appendChild(label);
+        grid.appendChild(tile);
+        if (window.QRCode){
+          new QRCode(holder, {text: it.code, width:200, height:200, correctLevel: qrCorrectLevel});
+        } else {
+          holder.textContent = it.code;
+        }
+        tile.addEventListener("click", function(){
+          qrZoomHolder.innerHTML = "";
+          if (window.QRCode){
+            new QRCode(qrZoomHolder, {text: it.code, width:320, height:320, correctLevel: qrCorrectLevel});
+          } else {
+            qrZoomHolder.textContent = it.code;
+          }
+          qrZoom.hidden = false;
+        });
+      });
+      sec.appendChild(grid);
+      qrByCustomer.appendChild(sec);
     });
-  });
-
+  }
   qrZoom.addEventListener("click", function(){ qrZoom.hidden = true; });
 
-  renderList();
+  // --- CSV取込（配送管理表のExcelをCSV書き出ししたものを想定。外部ライブラリなしの簡易パーサー） ---
+  function parseCsv(text){
+    var lines = text.split(/\r\n|\r|\n/).filter(function(l){ return l.trim().length > 0; });
+    if (lines.length < 2) return null;
+    function splitLine(line){
+      // 簡易CSVパーサー：ダブルクォート囲みと ",, " のエスケープに対応
+      var out = []; var cur = ""; var inQuotes = false;
+      for (var i = 0; i < line.length; i++){
+        var ch = line[i];
+        if (inQuotes){
+          if (ch === '"'){
+            if (line[i+1] === '"'){ cur += '"'; i++; } else { inQuotes = false; }
+          } else { cur += ch; }
+        } else {
+          if (ch === '"'){ inQuotes = true; }
+          else if (ch === ','){ out.push(cur); cur = ""; }
+          else { cur += ch; }
+        }
+      }
+      out.push(cur);
+      return out.map(function(s){ return s.trim(); });
+    }
+    var header = splitLine(lines[0]).map(function(h){ return h.replace(/﻿/g, ""); });
+    var idxCust = header.indexOf("顧客名");
+    var idxCode = header.indexOf("商品コード");
+    var idxName = header.indexOf("商品名");
+    var idxQty = header.indexOf("数量");
+    if (idxCust < 0 || idxCode < 0 || idxName < 0){
+      return {error: "見出し行に「顧客名」「商品コード」「商品名」が見つかりません。"};
+    }
+    var byCust = [];
+    var custIndex = Object.create(null);
+    for (var i = 1; i < lines.length; i++){
+      var cols = splitLine(lines[i]);
+      var custName = cols[idxCust] || "（顧客名未設定）";
+      var code = cols[idxCode] || "";
+      var name = cols[idxName] || "";
+      var qty = idxQty >= 0 ? (parseInt(cols[idxQty], 10) || 1) : 1;
+      if (!code) continue;
+      if (!(custName in custIndex)){
+        custIndex[custName] = byCust.length;
+        byCust.push({name: custName, items: []});
+      }
+      byCust[custIndex[custName]].items.push({code: code, name: name || code, qty: qty});
+    }
+    if (byCust.length === 0) return {error: "有効なデータ行がありませんでした。"};
+    return {customers: byCust};
+  }
+
+  var csvFile = document.getElementById("csvFile");
+  var csvText = document.getElementById("csvText");
+  var csvApplyBtn = document.getElementById("csvApplyBtn");
+  var csvSampleBtn = document.getElementById("csvSampleBtn");
+  var csvMsg = document.getElementById("csvMsg");
+
+  csvFile.addEventListener("change", function(){
+    var f = csvFile.files && csvFile.files[0];
+    if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){ csvText.value = String(reader.result || ""); };
+    reader.onerror = function(){
+      csvMsg.textContent = "ファイルを読み込めませんでした。"; csvMsg.className = "toast warn";
+    };
+    reader.readAsText(f, "utf-8");
+  });
+
+  csvApplyBtn.addEventListener("click", function(){
+    var text = csvText.value.trim();
+    if (!text){
+      csvMsg.textContent = "CSVを貼り付けるか、ファイルを選択してください。"; csvMsg.className = "toast warn";
+      return;
+    }
+    var result = parseCsv(text);
+    if (!result || result.error){
+      csvMsg.textContent = (result && result.error) || "読み込みに失敗しました。"; csvMsg.className = "toast warn";
+      return;
+    }
+    customers = result.customers;
+    scanned = Object.create(null);
+    activeCustomerIdx = 0;
+    closeQtyConfirm();
+    renderAll();
+    renderQrGrid();
+    csvMsg.textContent = "反映しました（顧客" + customers.length + "件・商品" + allItemsFlat().length + "件）。「スキャン」タブで確認できます。";
+    csvMsg.className = "toast ok";
+  });
+
+  csvSampleBtn.addEventListener("click", function(){
+    customers = sampleCustomers();
+    scanned = Object.create(null);
+    activeCustomerIdx = 0;
+    closeQtyConfirm();
+    renderAll();
+    renderQrGrid();
+    csvText.value = "";
+    csvMsg.textContent = "サンプルデータに戻しました。";
+    csvMsg.className = "toast ok";
+  });
+
+  renderAll();
   checkLibs();
 })();
 </script>
