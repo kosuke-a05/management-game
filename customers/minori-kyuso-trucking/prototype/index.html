@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>積み込みQR照合（みのり急送 お試し版）</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js" onerror="window.__jsQRLoadFailed=true"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" onerror="window.__qrcodeLoadFailed=true"></script>
 <style>
   /*
     layout: 1画面アプリ。上部にタブ（スキャン／テスト用QR）、下にリストとステータス
@@ -121,6 +121,15 @@
       <button class="ghost" id="stopBtn" hidden>停止</button>
     </div>
     <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
+    <div id="libStatus" class="sub" style="margin-top:8px;"></div>
+
+    <details style="margin-top:10px;">
+      <summary class="sub" style="cursor:pointer;">読み取れないときは、コードを直接入力して試す</summary>
+      <div style="display:flex; gap:8px; margin-top:8px;">
+        <input id="manualCode" type="text" placeholder="例: MINORI-001" style="flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:14px;">
+        <button class="ghost" id="manualBtn">確認</button>
+      </div>
+    </details>
   </section>
 
   <section class="card">
@@ -160,6 +169,7 @@
   var missingCountEl = document.getElementById("missingCount");
   var itemList = document.getElementById("itemList");
   var scanMsg = document.getElementById("scanMsg");
+  var libStatus = document.getElementById("libStatus");
 
   function renderList(){
     itemList.innerHTML = "";
@@ -188,6 +198,19 @@
   function showMsg(text, kind){
     scanMsg.textContent = text;
     scanMsg.className = "toast " + kind;
+  }
+
+  function checkLibs(){
+    var jsQrOk = typeof window.jsQR === "function";
+    var qrCodeOk = typeof window.QRCode === "function";
+    var parts = [];
+    parts.push("カメラ読み取り: " + (jsQrOk ? "OK" : (window.__jsQRLoadFailed ? "読み込み失敗" : "未読み込み")));
+    parts.push("テスト用QR生成: " + (qrCodeOk ? "OK" : (window.__qrcodeLoadFailed ? "読み込み失敗" : "未読み込み")));
+    libStatus.textContent = parts.join(" ／ ");
+    if (!jsQrOk){
+      showMsg("QR読み取り用ライブラリが読み込めませんでした。下の「コードを直接入力して試す」をお使いください。", "warn");
+    }
+    return {jsQrOk:jsQrOk, qrCodeOk:qrCodeOk};
   }
 
   function handleCode(code){
@@ -240,6 +263,10 @@
       showMsg("このブラウザではカメラが使えません。手入力で試してください。", "warn");
       return;
     }
+    if (typeof window.jsQR !== "function"){
+      showMsg("QR読み取り用ライブラリが読み込めていないため、カメラ判定ができません。下の「コードを直接入力して試す」をお使いください。", "warn");
+      return;
+    }
     navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
       .then(function(s){
         stream = s;
@@ -267,6 +294,21 @@
 
   startBtn.addEventListener("click", startScan);
   stopBtn.addEventListener("click", stopScan);
+
+  // --- 手入力フォールバック ---
+  var manualCode = document.getElementById("manualCode");
+  var manualBtn = document.getElementById("manualBtn");
+  function submitManualCode(){
+    var v = manualCode.value.trim();
+    if (!v) return;
+    handleCode(v.toUpperCase());
+    manualCode.value = "";
+    manualCode.focus();
+  }
+  manualBtn.addEventListener("click", submitManualCode);
+  manualCode.addEventListener("keydown", function(e){
+    if (e.key === "Enter"){ submitManualCode(); }
+  });
 
   // --- タブ切り替え ---
   var tabScanBtn = document.getElementById("tabScanBtn");
@@ -299,13 +341,14 @@
     tile.appendChild(label);
     qrGrid.appendChild(tile);
     if (window.QRCode){
-      new QRCode(holder, {text: it.code, width:120, height:120});
+      new QRCode(holder, {text: it.code, width:200, height:200});
     } else {
       holder.textContent = it.code;
     }
   });
 
   renderList();
+  checkLibs();
 })();
 </script>
 </body>
