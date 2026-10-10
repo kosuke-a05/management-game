@@ -86,9 +86,15 @@
   .item-code{font-size:11px; color:var(--sub); font-variant-numeric:tabular-nums;}
 
   .qr-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px;}
-  .qr-tile{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center;}
+  .qr-tile{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center; cursor:pointer;}
   .qr-tile canvas,.qr-tile img{max-width:100%; height:auto;}
   .qr-tile .label{font-size:12px; margin-top:6px; color:var(--ink);}
+  .qr-zoom{
+    position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .qr-zoom-inner{background:#fff; border-radius:16px; padding:24px; text-align:center; max-width:92vw;}
+  .qr-zoom-inner canvas,.qr-zoom-inner img{max-width:80vw; max-height:60vh; width:auto; height:auto;}
   footer{color:var(--sub); font-size:12px; text-align:center; padding-block:6px 20px;}
   [hidden]{display:none!important;}
 </style>
@@ -121,7 +127,7 @@
       <button class="ghost" id="stopBtn" hidden>停止</button>
     </div>
     <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
-    <div id="libStatus" class="sub" style="margin-top:8px;"></div>
+    <div id="libStatus" class="sub" style="margin-top:8px; padding:6px 10px; background:var(--chip); border-radius:8px; display:inline-block;"></div>
 
     <details style="margin-top:10px;">
       <summary class="sub" style="cursor:pointer;">読み取れないときは、コードを直接入力して試す</summary>
@@ -138,9 +144,16 @@
   </section>
 
   <section id="panelQr" class="card" hidden>
-    <p class="sub" style="margin:0 0 10px;">印刷されたQRがまだない商品を、この画面に表示してテストできます（別の端末のカメラで読み取ってください）。</p>
+    <p class="sub" style="margin:0 0 10px;">印刷されたQRがまだない商品を、この画面に表示してテストできます（別の端末のカメラで読み取ってください）。タップすると1つだけ大きく表示されます。</p>
     <div class="qr-grid" id="qrGrid"></div>
   </section>
+
+  <div id="qrZoom" class="qr-zoom" hidden>
+    <div class="qr-zoom-inner">
+      <div id="qrZoomHolder"></div>
+      <p class="sub" style="margin-top:10px;">タップで閉じる</p>
+    </div>
+  </div>
 
   <footer>精神と時の部屋・仮想フェーズのお試しプロトタイプ</footer>
 </div>
@@ -329,7 +342,13 @@
   });
 
   // --- テスト用QR生成 ---
+  // 誤り訂正レベルは既定のH(高)のままだと同じサイズでもコードが細かくなり、
+  // 画面越しのカメラ読み取りで失敗しやすくなるため、短いコードには十分なL(低)を使う。
+  var qrCorrectLevel = window.QRCode ? QRCode.CorrectLevel.L : null;
   var qrGrid = document.getElementById("qrGrid");
+  var qrZoom = document.getElementById("qrZoom");
+  var qrZoomHolder = document.getElementById("qrZoomHolder");
+
   todaysList.forEach(function(it){
     var tile = document.createElement("div");
     tile.className = "qr-tile";
@@ -337,15 +356,26 @@
     tile.appendChild(holder);
     var label = document.createElement("div");
     label.className = "label";
-    label.textContent = it.name;
+    label.textContent = it.name + "（" + it.code + "）";
     tile.appendChild(label);
     qrGrid.appendChild(tile);
     if (window.QRCode){
-      new QRCode(holder, {text: it.code, width:200, height:200});
+      new QRCode(holder, {text: it.code, width:200, height:200, correctLevel: qrCorrectLevel});
     } else {
       holder.textContent = it.code;
     }
+    tile.addEventListener("click", function(){
+      qrZoomHolder.innerHTML = "";
+      if (window.QRCode){
+        new QRCode(qrZoomHolder, {text: it.code, width:320, height:320, correctLevel: qrCorrectLevel});
+      } else {
+        qrZoomHolder.textContent = it.code;
+      }
+      qrZoom.hidden = false;
+    });
   });
+
+  qrZoom.addEventListener("click", function(){ qrZoom.hidden = true; });
 
   renderList();
   checkLibs();
