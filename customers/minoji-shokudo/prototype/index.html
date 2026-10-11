@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>シフトかんたん作成（美濃路食堂 お試し版）</title>
+<script src="shift-engine.js"></script>
+<style>
+  /*
+    layout: スマホ1画面。上にタブ（希望を出す／シフト表／スタッフ・ルール）
+    color: 食堂らしい落ち着いた生成り地に、藍色のアクセント。注意=朱、OK=緑
+    type: システムフォント。表の数字は等幅
+  */
+  :root{
+    --bg:#f7f4ee; --panel:#ffffff; --ink:#1f2328; --sub:#6b6f76; --line:#e4dfd5;
+    --accent:#2f4d7a; --accent-ink:#ffffff; --ok:#1f7a45; --ok-bg:#e6f3ea;
+    --warn:#b4351f; --warn-bg:#fbe9e5; --chip:#efeae0; --vet:#a8741a;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#16181b; --panel:#1f2226; --ink:#eeebe5; --sub:#9a9ea5; --line:#30343a;
+      --accent:#7ea2d6; --accent-ink:#0e1420; --ok:#5fd18e; --ok-bg:#163223;
+      --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#16181b; --panel:#1f2226; --ink:#eeebe5; --sub:#9a9ea5; --line:#30343a;
+    --accent:#7ea2d6; --accent-ink:#0e1420; --ok:#5fd18e; --ok-bg:#163223;
+    --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink); padding-inline:16px;
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;}
+  .wrap{max-width:560px; margin:0 auto; padding-block:16px 28px; display:flex; flex-direction:column; gap:14px;}
+  h1{font-size:19px; margin:0;}
+  .sub{color:var(--sub); font-size:13px; margin:0; line-height:1.55;}
+  nav{display:flex; gap:6px;}
+  nav button{flex:1; padding:10px 0; border-radius:10px; border:1px solid var(--line); background:var(--panel);
+    color:var(--ink); font-size:13px; font-weight:600; cursor:pointer;}
+  nav button[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px;}
+  .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  label.f{font-size:13px; color:var(--sub); display:block; margin-bottom:6px;}
+  select, input[type=number]{font-size:15px; padding:9px 10px; border-radius:10px; border:1px solid var(--line);
+    background:var(--bg); color:var(--ink);}
+  select{width:100%;}
+  button.primary{background:var(--accent); color:var(--accent-ink); border:none; border-radius:10px; padding:12px 16px;
+    font-size:14px; font-weight:700; cursor:pointer;}
+  button.ghost{background:transparent; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:11px 14px;
+    font-size:14px; font-weight:600; cursor:pointer;}
+  button.line{background:#06c755; color:#fff; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;}
+  .full{width:100%;}
+
+  /* 希望入力グリッド */
+  table.grid{width:100%; border-collapse:separate; border-spacing:4px;}
+  table.grid th{font-size:12px; color:var(--sub); font-weight:600;}
+  table.grid td.day{font-weight:700; font-size:14px; text-align:center; width:34px;}
+  .tog{width:100%; padding:11px 0; border-radius:9px; border:1px solid var(--line); background:var(--chip);
+    color:var(--sub); font-size:15px; font-weight:700; cursor:pointer;}
+  .tog.on{background:var(--ok-bg); border-color:var(--ok); color:var(--ok);}
+  .tog:disabled{opacity:.35; cursor:default;}
+
+  /* シフト表 */
+  .chips{display:flex; gap:6px; flex-wrap:wrap;}
+  .chip{padding:7px 12px; border-radius:99px; border:1px solid var(--line); background:var(--chip); color:var(--ink);
+    font-size:13px; font-weight:600; cursor:pointer;}
+  .chip[aria-pressed="true"]{background:var(--accent); border-color:var(--accent); color:var(--accent-ink);}
+  .status{display:flex; gap:6px; flex-wrap:wrap;}
+  .badge{font-size:12.5px; font-weight:700; padding:6px 10px; border-radius:8px;}
+  .badge.ok{background:var(--ok-bg); color:var(--ok);}
+  .badge.warn{background:var(--warn-bg); color:var(--warn);}
+  table.shift{width:100%; border-collapse:collapse; font-size:13px;}
+  table.shift th{font-size:12px; color:var(--sub); font-weight:600; text-align:left; padding:6px 4px; border-bottom:1px solid var(--line);}
+  table.shift td{padding:7px 4px; border-bottom:1px solid var(--line); vertical-align:top;}
+  table.shift td.day{font-weight:700; width:30px;}
+  table.shift tr.closed td{color:var(--sub);}
+  .who{display:inline-block; margin:0 4px 4px 0; padding:4px 8px; border-radius:7px; background:var(--chip);
+    border:1px solid transparent; font-size:13px; cursor:pointer; color:var(--ink);}
+  .who .star{color:var(--vet); margin-right:2px;}
+  .who.sel{border-color:var(--accent);}
+  .lack{display:inline-block; padding:4px 8px; border-radius:7px; background:var(--warn-bg); color:var(--warn); font-size:12px; font-weight:700;}
+  .cell-warn{background:var(--warn-bg);}
+
+  .hours-row{display:flex; align-items:center; gap:8px; font-size:13px; padding:4px 0;}
+  .hours-row .nm{width:74px; flex:none;}
+  .bar{flex:1; height:8px; border-radius:99px; background:var(--chip); overflow:hidden;}
+  .bar > div{height:100%; background:var(--accent);}
+  .hours-row .num{width:62px; text-align:right; font-variant-numeric:tabular-nums; color:var(--sub);}
+
+  /* 代役パネル */
+  .sheet{position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line);
+    border-radius:16px 16px 0 0; padding:16px; box-shadow:0 -8px 24px rgba(0,0,0,.15); z-index:30; max-height:70vh; overflow:auto;}
+  .sheet-inner{max-width:560px; margin:0 auto;}
+  .cand{display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border-radius:10px;
+    background:var(--chip); margin-bottom:6px; cursor:pointer; border:1px solid transparent;}
+  .cand:hover{border-color:var(--accent);}
+
+  /* スタッフ表 */
+  table.staff{width:100%; border-collapse:collapse; font-size:13px;}
+  table.staff th{font-size:12px; color:var(--sub); text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); font-weight:600;}
+  table.staff td{padding:7px 4px; border-bottom:1px solid var(--line);}
+  table.staff input[type=number]{width:62px; padding:6px; font-size:14px;}
+  ul.rules{margin:0; padding-left:18px; font-size:13.5px; line-height:1.7;}
+  .toast{position:fixed; left:50%; top:16px; transform:translateX(-50%); background:var(--ink); color:var(--bg);
+    padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600; z-index:40; max-width:90vw;}
+  [hidden]{display:none!important;}
+  footer{color:var(--sub); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>シフトかんたん作成</h1>
+    <p class="sub">美濃路食堂 お試し版（3店舗）・来週のシフト</p>
+  </header>
+
+  <nav>
+    <button id="tabReq" aria-pressed="true">希望を出す</button>
+    <button id="tabShift" aria-pressed="false">シフト表</button>
+    <button id="tabRules" aria-pressed="false">スタッフ・ルール</button>
+  </nav>
+
+  <!-- 希望を出す（スタッフ用） -->
+  <section id="panelReq" class="card">
+    <label class="f" for="meSel">あなたの名前</label>
+    <select id="meSel"></select>
+    <p class="sub" style="margin:10px 0 6px;">出られる時間をタップしてください（緑が「出られる」）。</p>
+    <table class="grid" id="reqGrid"></table>
+    <div class="row" style="margin-top:12px;">
+      <button class="line full" id="sendLineBtn">LINEで店長に送る</button>
+    </div>
+    <p class="sub" style="margin-top:8px;">LINEに届いたリンクを店長がタップすると、この希望がシフト表に自動で取り込まれます。</p>
+  </section>
+
+  <!-- シフト表（店長用） -->
+  <section id="panelShift" class="card" hidden>
+    <button class="primary full" id="genBtn">みんなの希望から自動で作成</button>
+    <div class="status" id="statusBox" style="margin-top:12px;"></div>
+    <div class="chips" id="storeChips" style="margin-top:12px;"></div>
+    <div id="shiftTable" style="margin-top:10px;"></div>
+    <p class="sub" style="margin-top:8px;">★はベテラン。名前をタップすると、急に休むときの代わりの人が出ます。</p>
+    <button class="line full" id="shareLineBtn" style="margin-top:12px;">この店舗のシフトをLINEで共有</button>
+  </section>
+
+  <section id="panelHours" class="card" hidden>
+    <p class="sub" style="margin:0 0 8px;">今週の勤務時間（上限に対して）</p>
+    <div id="hoursBox"></div>
+  </section>
+
+  <!-- スタッフ・ルール -->
+  <section id="panelRules" class="card" hidden>
+    <p class="sub" style="margin:0 0 8px; font-weight:700; color:var(--ink);">自動作成で守っているルール</p>
+    <ul class="rules">
+      <li>どの時間帯にも、最低1人はベテラン（勤続1年以上）を入れる。新人だけの時間帯は作らない</li>
+      <li>昼（11:00〜15:00）は各店2人、夜（17:00〜21:00）は各店1人</li>
+      <li>朝（7:00〜）は本店のみ1人。早朝に出られる人だけ</li>
+      <li>学生さんは土日の昼を優先して入れる</li>
+      <li>一人ひとりの週の上限時間を超えない（扶養内の方は、月の上限÷4程度を目安に設定）</li>
+      <li>本人が出られると言った時間以外には入れない。同じ時間の店舗かけもちなし、1日最大2枠</li>
+      <li>特定の人に負担が偏らないよう、上限に対して勤務が少ない人から優先</li>
+      <li>（仮）定休日：本店＝水、駅前店＝火、バイパス店＝木</li>
+    </ul>
+    <p class="sub" style="margin:14px 0 6px; font-weight:700; color:var(--ink);">スタッフ</p>
+    <div style="overflow-x:auto;"><table class="staff" id="staffTable"></table></div>
+    <button class="ghost full" id="resetBtn" style="margin-top:12px;">サンプルデータに戻す</button>
+  </section>
+
+  <footer>精神と時の部屋・仮想フェーズのお試しプロトタイプ（データはこの端末の中だけに保存されます）</footer>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-inner">
+    <div class="row" style="justify-content:space-between; margin-bottom:8px;">
+      <strong id="sheetTitle" style="font-size:15px;"></strong>
+      <button class="ghost" id="sheetClose" style="padding:6px 12px;">閉じる</button>
+    </div>
+    <p class="sub" id="sheetNote" style="margin-bottom:10px;"></p>
+    <div id="sheetList"></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function(){
+  "use strict";
+  var E = window.ShiftEngine;
+  var KEY = "minoji-shift-v1";
+
+  var state = load() || fresh();
+  function fresh(){ return { stores: E.sampleStores(), staff: E.sampleStaff(), assign: null, activeStore: "A", me: "s01" }; }
+  function load(){ try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
+
+  function person(id){ return state.staff.filter(function(p){ return p.id === id; })[0]; }
+  function storeName(id){ return state.stores.filter(function(s){ return s.id === id; })[0].name; }
+  function toast(msg){
+    var t = document.getElementById("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 2600);
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+
+  // ---- LINEで届いたリンクからの取り込み（#req=スタッフID.希望ビット列） ----
+  (function importFromHash(){
+    var m = /#req=([a-z0-9]+)\.([01]{21})/.exec(location.hash);
+    if (!m) return;
+    var p = person(m[1]);
+    if (p){ p.avail = m[2]; state.assign = null; save(); setTimeout(function(){ toast(p.name + "さんの希望を取り込みました"); }, 300); }
+    try { history.replaceState(null, "", location.pathname); } catch(e){}
+  })();
+
+  // ---- タブ ----
+  var tabs = { req: ["tabReq","panelReq"], shift: ["tabShift","panelShift","panelHours"], rules: ["tabRules","panelRules"] };
+  function setTab(name){
+    Object.keys(tabs).forEach(function(k){
+      document.getElementById(tabs[k][0]).setAttribute("aria-pressed", k === name ? "true" : "false");
+      tabs[k].slice(1).forEach(function(id){ document.getElementById(id).hidden = k !== name; });
+    });
+    if (name === "shift") renderShift();
+    if (name === "rules") renderStaff();
+    if (name === "req") renderReq();
+  }
+  document.getElementById("tabReq").onclick = function(){ setTab("req"); };
+  document.getElementById("tabShift").onclick = function(){ setTab("shift"); };
+  document.getElementById("tabRules").onclick = function(){ setTab("rules"); };
+
+  // ---- 希望を出す ----
+  var meSel = document.getElementById("meSel");
+  function renderReq(){
+    meSel.innerHTML = state.staff.map(function(p){
+      return '<option value="' + p.id + '"' + (p.id === state.me ? " selected" : "") + ">" + esc(p.name) + "（" + esc(p.type) + "）</option>";
+    }).join("");
+    var p = person(state.me);
+    var canMorning = p.early && p.stores.indexOf("A") >= 0;
+    var html = "<tr><th></th>" + E.SLOTS.map(function(sl){
+      return "<th>" + sl.label + "<br><span style='font-weight:500'>" + sl.time.replace("〜","-") + "</span></th>";
+    }).join("") + "</tr>";
+    for (var d = 0; d < 7; d++){
+      html += '<tr><td class="day">' + E.DAYS[d] + "</td>";
+      E.SLOTS.forEach(function(sl){
+        var disabled = sl.id === "m" && !canMorning;
+        var on = !disabled && E.isAvailable(p, d, sl.id);
+        html += '<td><button class="tog' + (on ? " on" : "") + '" data-d="' + d + '" data-s="' + sl.id + '"' +
+          (disabled ? " disabled" : "") + ">" + (disabled ? "—" : (on ? "◯" : "×")) + "</button></td>";
+      });
+      html += "</tr>";
+    }
+    document.getElementById("reqGrid").innerHTML = html;
+  }
+  meSel.onchange = function(){ state.me = meSel.value; save(); renderReq(); };
+  document.getElementById("reqGrid").onclick = function(e){
+    var b = e.target.closest("button.tog"); if (!b || b.disabled) return;
+    var p = person(state.me), i = E.availIndex(+b.dataset.d, b.dataset.s);
+    var bits = p.avail.split(""); bits[i] = bits[i] === "1" ? "0" : "1"; p.avail = bits.join("");
+    state.assign = null; save(); renderReq();
+  };
+  document.getElementById("sendLineBtn").onclick = function(){
+    var p = person(state.me);
+    var lines = [];
+    for (var d = 0; d < 7; d++){
+      var ok = E.SLOTS.filter(function(sl){ return E.isAvailable(p, d, sl.id); }).map(function(sl){ return sl.label; });
+      lines.push(E.DAYS[d] + "：" + (ok.length ? ok.join("・") : "×"));
+    }
+    var link = location.origin + location.pathname + "#req=" + p.id + "." + p.avail;
+    var text = "【来週のシフト希望】" + p.name + "\n" + lines.join("\n") + "\n\n▼店長用（タップで取り込み）\n" + link;
+    window.open("https://line.me/R/share?text=" + encodeURIComponent(text), "_blank");
+  };
+
+  // ---- シフト表 ----
+  var selected = null; // {store, day, slot, pid}
+  document.getElementById("genBtn").onclick = function(){
+    var r = E.generate(state.stores, state.staff);
+    state.assign = r.assign; save(); renderShift();
+    toast("シフトを作成しました");
+  };
+  function renderShift(){
+    var chips = state.stores.map(function(s){
+      return '<button class="chip" data-store="' + s.id + '" aria-pressed="' + (s.id === state.activeStore) + '">' + esc(s.name) + "</button>";
+    }).join("");
+    document.getElementById("storeChips").innerHTML = chips;
+    var box = document.getElementById("shiftTable"), statusBox = document.getElementById("statusBox");
+    if (!state.assign){
+      box.innerHTML = '<p class="sub">まだ作成していません。上のボタンを押すと、みんなの希望とルールをもとに自動で組みます。</p>';
+      statusBox.innerHTML = ""; document.getElementById("hoursBox").innerHTML = "";
+      return;
+    }
+    var iss = E.findIssues(state.assign, state.stores, state.staff);
+    var b = [];
+    b.push(iss.violations.length ? '<span class="badge warn">ルール違反 ' + iss.violations.length + "件</span>" : '<span class="badge ok">ルール違反 0件</span>');
+    var lackN = iss.shortages.reduce(function(a, x){ return a + x.missing; }, 0);
+    b.push(lackN ? '<span class="badge warn">人手不足 ' + lackN + "人分</span>" : '<span class="badge ok">人手不足なし</span>');
+    if (iss.noVeteran.length) b.push('<span class="badge warn">ベテラン不在 ' + iss.noVeteran.length + "枠</span>");
+    statusBox.innerHTML = b.join("");
+
+    var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
+    var slots = E.SLOTS.filter(function(sl){ return sl.id !== "m" || st.hasMorning; });
+    var html = '<table class="shift"><tr><th></th>' + slots.map(function(sl){ return "<th>" + sl.label + "</th>"; }).join("") + "</tr>";
+    for (var d = 0; d < 7; d++){
+      if (st.closedDay === d){ html += '<tr class="closed"><td class="day">' + E.DAYS[d] + '</td><td colspan="' + slots.length + '">定休日</td></tr>'; continue; }
+      html += '<tr><td class="day">' + E.DAYS[d] + "</td>";
+      slots.forEach(function(sl){
+        var cell = state.assign[st.id][d][sl.id], need = st.need[sl.id];
+        var noVet = !cell.some(function(pid){ return person(pid) && person(pid).veteran; });
+        var inner = cell.map(function(pid){
+          var p = person(pid); if (!p) return "";
+          var sel = selected && selected.store === st.id && selected.day === d && selected.slot === sl.id && selected.pid === pid;
+          return '<span class="who' + (sel ? " sel" : "") + '" data-d="' + d + '" data-s="' + sl.id + '" data-p="' + pid + '">' +
+            (p.veteran ? '<span class="star">★</span>' : "") + esc(p.name) + "</span>";
+        }).join("");
+        if (cell.length < need) inner += '<span class="lack">あと' + (need - cell.length) + "人</span>";
+        if (cell.length && noVet) inner += '<span class="lack">ベテラン不在</span>';
+        html += '<td class="' + ((cell.length < need || noVet) ? "cell-warn" : "") + '">' + inner + "</td>";
+      });
+      html += "</tr>";
+    }
+    html += "</table>";
+    box.innerHTML = html;
+
+    document.getElementById("hoursBox").innerHTML = state.staff.map(function(p){
+      var h = iss.hours[p.id], pct = Math.min(100, Math.round(h / p.cap * 100));
+      return '<div class="hours-row"><span class="nm">' + (p.veteran ? '<span style="color:var(--vet)">★</span>' : "") + esc(p.name) + '</span>' +
+        '<div class="bar"><div style="width:' + pct + '%"></div></div><span class="num">' + h + " / " + p.cap + "h</span></div>";
+    }).join("");
+  }
+  document.getElementById("storeChips").onclick = function(e){
+    var c = e.target.closest(".chip"); if (!c) return;
+    state.activeStore = c.dataset.store; save(); renderShift();
+  };
+  document.getElementById("shiftTable").onclick = function(e){
+    var w = e.target.closest(".who"); if (!w) return;
+    selected = { store: state.activeStore, day: +w.dataset.d, slot: w.dataset.s, pid: w.dataset.p };
+    renderShift(); openSheet();
+  };
+
+  // ---- 代役パネル ----
+  var sheet = document.getElementById("sheet");
+  function openSheet(){
+    var p = person(selected.pid), sl = E.SLOTS.filter(function(x){ return x.id === selected.slot; })[0];
+    var res = E.substitutes(state.assign, state.stores, state.staff, selected.store, selected.day, selected.slot, selected.pid);
+    document.getElementById("sheetTitle").textContent = p.name + "さんが休む場合（" + storeName(selected.store) + "・" + E.DAYS[selected.day] + "曜・" + sl.label + "）";
+    document.getElementById("sheetNote").textContent = res.mustBeVeteran
+      ? "この枠のベテランが" + p.name + "さんだけなので、ベテランの中から候補を出しています。"
+      : "出られる人のうち、今週の勤務が少ない人から順に並んでいます。タップで入れ替えます。";
+    var list = document.getElementById("sheetList");
+    if (!res.candidates.length){
+      list.innerHTML = '<p class="sub" style="color:var(--warn);">条件に合う代わりの人がいません。店長が入るか、別の時間の人に相談が必要です。</p>';
+    } else {
+      list.innerHTML = res.candidates.map(function(c){
+        return '<div class="cand" data-p="' + c.person.id + '"><span>' + (c.person.veteran ? '<span style="color:var(--vet)">★</span>' : "") +
+          esc(c.person.name) + '<span class="sub" style="margin-left:6px;">' + esc(c.person.type) + '</span></span><span class="sub">今週 ' + c.hours + " / " + c.person.cap + "h</span></div>";
+      }).join("");
+    }
+    sheet.hidden = false;
+  }
+  document.getElementById("sheetClose").onclick = function(){ sheet.hidden = true; selected = null; renderShift(); };
+  document.getElementById("sheetList").onclick = function(e){
+    var c = e.target.closest(".cand"); if (!c) return;
+    var cell = state.assign[selected.store][selected.day][selected.slot];
+    var i = cell.indexOf(selected.pid); if (i >= 0) cell[i] = c.dataset.p;
+    var from = person(selected.pid).name, to = person(c.dataset.p).name;
+    save(); sheet.hidden = true; selected = null; renderShift();
+    toast(from + "さん → " + to + "さんに入れ替えました");
+  };
+
+  document.getElementById("shareLineBtn").onclick = function(){
+    if (!state.assign){ toast("先にシフトを作成してください"); return; }
+    var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
+    var lines = ["【来週のシフト】" + st.name];
+    for (var d = 0; d < 7; d++){
+      if (st.closedDay === d){ lines.push(E.DAYS[d] + "：定休日"); continue; }
+      var parts = E.SLOTS.filter(function(sl){ return E.storeHasSlot(st, d, sl.id); }).map(function(sl){
+        return sl.label + " " + (state.assign[st.id][d][sl.id].map(function(pid){ return person(pid).name; }).join("・") || "未定");
+      });
+      lines.push(E.DAYS[d] + "：" + parts.join(" ／ "));
+    }
+    window.open("https://line.me/R/share?text=" + encodeURIComponent(lines.join("\n")), "_blank");
+  };
+
+  // ---- スタッフ・ルール ----
+  function renderStaff(){
+    var html = "<tr><th>名前</th><th>区分</th><th>ベテラン</th><th>店舗</th><th>早朝</th><th>週上限</th></tr>";
+    state.staff.forEach(function(p){
+      html += "<tr><td>" + esc(p.name) + "</td><td>" + esc(p.type) + '</td>' +
+        '<td><input type="checkbox" data-vet="' + p.id + '"' + (p.veteran ? " checked" : "") + "></td>" +
+        "<td>" + p.stores.map(storeName).join("・") + "</td><td>" + (p.early ? "◯" : "") + "</td>" +
+        '<td><input type="number" min="0" max="60" step="4" data-cap="' + p.id + '" value="' + p.cap + '">h</td></tr>';
+    });
+    document.getElementById("staffTable").innerHTML = html;
+  }
+  document.getElementById("staffTable").onchange = function(e){
+    var t = e.target;
+    if (t.dataset.vet){ person(t.dataset.vet).veteran = t.checked; }
+    if (t.dataset.cap){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0) person(t.dataset.cap).cap = v; }
+    state.assign = null; save();
+    toast("変更しました。シフト表で作り直してください");
+  };
+  document.getElementById("resetBtn").onclick = function(){
+    state = fresh(); save(); renderStaff(); toast("サンプルデータに戻しました");
+  };
+
+  renderReq();
+})();
+</script>
+</body>
+</html>
