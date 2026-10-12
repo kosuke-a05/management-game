@@ -7,28 +7,28 @@
 <script src="shift-engine.js"></script>
 <style>
   /*
-    layout: スマホ1画面。上にタブ（希望を出す／シフト表／スタッフ・ルール）
+    layout: スマホ1画面。スタッフ用（?staff）は「予定がある日をタップ」だけの1画面。店長用はタブ（シフト表／スタッフ・ルール）
     color: 食堂らしい落ち着いた生成り地に、藍色のアクセント。注意=朱、OK=緑
     type: システムフォント。表の数字は等幅
   */
   :root{
     --bg:#f7f4ee; --panel:#ffffff; --ink:#1f2328; --sub:#6b6f76; --line:#e4dfd5;
     --accent:#2f4d7a; --accent-ink:#ffffff; --ok:#1f7a45; --ok-bg:#e6f3ea;
-    --warn:#b4351f; --warn-bg:#fbe9e5; --chip:#efeae0; --vet:#a8741a;
+    --warn:#b4351f; --warn-bg:#fbe9e5; --chip:#efeae0; --vet:#a8741a; --sat:#2f6fb0; --sun:#b4351f;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#16181b; --panel:#1f2226; --ink:#eeebe5; --sub:#9a9ea5; --line:#30343a;
       --accent:#7ea2d6; --accent-ink:#0e1420; --ok:#5fd18e; --ok-bg:#163223;
-      --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a;
+      --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a; --sat:#7ea2d6; --sun:#ff7a62;
       color-scheme: dark;
     }
   }
   :root[data-theme="dark"]{
     --bg:#16181b; --panel:#1f2226; --ink:#eeebe5; --sub:#9a9ea5; --line:#30343a;
     --accent:#7ea2d6; --accent-ink:#0e1420; --ok:#5fd18e; --ok-bg:#163223;
-    --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a;
+    --warn:#ff7a62; --warn-bg:#3a1c17; --chip:#282c31; --vet:#e3b25a; --sat:#7ea2d6; --sun:#ff7a62;
     color-scheme: dark;
   }
   *{box-sizing:border-box;}
@@ -53,12 +53,31 @@
     font-size:14px; font-weight:600; cursor:pointer;}
   button.line{background:#06c755; color:#fff; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;}
   .full{width:100%;}
+  .note{background:var(--ok-bg); color:var(--ok); border-radius:10px; padding:9px 12px; font-size:12.5px; font-weight:600; line-height:1.55;}
+  .caution{background:var(--warn-bg); color:var(--warn); border-radius:10px; padding:9px 12px; font-size:12.5px; font-weight:600; line-height:1.55;}
 
-  /* 希望入力グリッド */
-  table.grid{width:100%; border-collapse:separate; border-spacing:4px;}
+  /* 予定カレンダー（スタッフ用） */
+  .cal{display:grid; grid-template-columns:repeat(7,1fr); gap:4px;}
+  .cal .wd{font-size:12px; font-weight:700; text-align:center; color:var(--sub); padding:4px 0;}
+  .cal .wd.sat{color:var(--sat);} .cal .wd.sun{color:var(--sun);}
+  .cal .blank{visibility:hidden;}
+  .daybtn{border:1px solid var(--line); background:var(--chip); color:var(--ink); border-radius:9px; padding:7px 0 6px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; gap:2px; font-size:15px; font-weight:700; min-height:50px;}
+  .daybtn small{font-size:10px; font-weight:700; line-height:1; color:var(--ok);}
+  .daybtn.busy{background:var(--warn-bg); border-color:var(--warn); color:var(--warn);}
+  .daybtn.busy small{color:var(--warn);}
+  .count{display:flex; gap:8px; margin-top:10px;}
+  .count span{flex:1; text-align:center; border-radius:9px; padding:8px 0; font-size:13px; font-weight:700;}
+  .count .c-busy{background:var(--warn-bg); color:var(--warn);}
+  .count .c-free{background:var(--ok-bg); color:var(--ok);}
+  details{margin-top:12px;}
+  details summary{font-size:13px; font-weight:700; cursor:pointer; color:var(--accent);}
+
+  /* いつもの時間帯グリッド */
+  table.grid{width:100%; border-collapse:separate; border-spacing:4px; margin-top:8px;}
   table.grid th{font-size:12px; color:var(--sub); font-weight:600;}
   table.grid td.day{font-weight:700; font-size:14px; text-align:center; width:34px;}
-  .tog{width:100%; padding:11px 0; border-radius:9px; border:1px solid var(--line); background:var(--chip);
+  .tog{width:100%; padding:10px 0; border-radius:9px; border:1px solid var(--line); background:var(--chip);
     color:var(--sub); font-size:15px; font-weight:700; cursor:pointer;}
   .tog.on{background:var(--ok-bg); border-color:var(--ok); color:var(--ok);}
   .tog:disabled{opacity:.35; cursor:default;}
@@ -74,11 +93,13 @@
   .badge.warn{background:var(--warn-bg); color:var(--warn);}
   table.shift{width:100%; border-collapse:collapse; font-size:13px;}
   table.shift th{font-size:12px; color:var(--sub); font-weight:600; text-align:left; padding:6px 4px; border-bottom:1px solid var(--line);}
-  table.shift td{padding:7px 4px; border-bottom:1px solid var(--line); vertical-align:top;}
-  table.shift td.day{font-weight:700; width:30px;}
+  table.shift td{padding:6px 4px; border-bottom:1px solid var(--line); vertical-align:top;}
+  table.shift td.day{font-weight:700; width:44px; white-space:nowrap;}
+  table.shift td.day.sat{color:var(--sat);} table.shift td.day.sun{color:var(--sun);}
+  table.shift tr.mon td{border-top:2px solid var(--line);}
   table.shift tr.closed td{color:var(--sub);}
   .who{display:inline-block; margin:0 4px 4px 0; padding:4px 8px; border-radius:7px; background:var(--chip);
-    border:1px solid transparent; font-size:13px; cursor:pointer; color:var(--ink);}
+    border:1px solid transparent; font-size:13px; cursor:pointer; color:var(--ink); white-space:nowrap;}
   .who .star{color:var(--vet); margin-right:2px;}
   .who.sel{border-color:var(--accent);}
   .lack{display:inline-block; padding:4px 8px; border-radius:7px; background:var(--warn-bg); color:var(--warn); font-size:12px; font-weight:700;}
@@ -88,7 +109,12 @@
   .hours-row .nm{width:74px; flex:none;}
   .bar{flex:1; height:8px; border-radius:99px; background:var(--chip); overflow:hidden;}
   .bar > div{height:100%; background:var(--accent);}
-  .hours-row .num{width:62px; text-align:right; font-variant-numeric:tabular-nums; color:var(--sub);}
+  .hours-row .num{width:74px; text-align:right; font-variant-numeric:tabular-nums; color:var(--sub);}
+
+  .req-list{margin:8px 0 0; padding:0; list-style:none; font-size:13px; line-height:1.6;}
+  .req-list li{padding:5px 0; border-bottom:1px solid var(--line);}
+  .req-list .who-n{font-weight:700;}
+  .req-list .miss{color:var(--warn); font-weight:700;}
 
   /* 代役パネル */
   .sheet{position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line);
@@ -102,7 +128,7 @@
   table.staff{width:100%; border-collapse:collapse; font-size:13px;}
   table.staff th{font-size:12px; color:var(--sub); text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); font-weight:600;}
   table.staff td{padding:7px 4px; border-bottom:1px solid var(--line);}
-  table.staff input[type=number]{width:62px; padding:6px; font-size:14px;}
+  table.staff input[type=number]{width:66px; padding:6px; font-size:14px;}
   ul.rules{margin:0; padding-left:18px; font-size:13.5px; line-height:1.7;}
   .toast{position:fixed; left:50%; top:16px; transform:translateX(-50%); background:var(--ink); color:var(--bg);
     padding:10px 14px; border-radius:10px; font-size:13.5px; font-weight:600; z-index:40; max-width:90vw;}
@@ -112,63 +138,84 @@
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <h1>シフトかんたん作成</h1>
-    <p class="sub">美濃路食堂 お試し版（3店舗）・来週のシフト</p>
-  </header>
 
-  <nav>
-    <button id="tabReq" aria-pressed="true">希望を出す</button>
-    <button id="tabShift" aria-pressed="false">シフト表</button>
-    <button id="tabRules" aria-pressed="false">スタッフ・ルール</button>
-  </nav>
+  <!-- ===== スタッフ用（URLに ?staff が付いているとき）：自分の予定を出すだけ ===== -->
+  <div id="staffApp" hidden>
+    <header style="margin-bottom:14px;">
+      <h1>シフト希望の提出</h1>
+      <p class="sub" id="staffMonthLabel"></p>
+    </header>
+    <section class="card">
+      <label class="f" for="meSel">あなたの名前</label>
+      <select id="meSel"></select>
+      <p class="sub" style="margin:12px 0 8px;"><b style="color:var(--ink)">予定がある日だけ</b>タップしてください（赤＝予定あり）。タップしなかった日は「出られる」として扱います。</p>
+      <div class="cal" id="cal"></div>
+      <div class="count"><span class="c-busy" id="cntBusy"></span><span class="c-free" id="cntFree"></span></div>
 
-  <!-- 希望を出す（スタッフ用） -->
-  <section id="panelReq" class="card">
-    <label class="f" for="meSel">あなたの名前</label>
-    <select id="meSel"></select>
-    <p class="sub" style="margin:10px 0 6px;">出られる時間をタップしてください（緑が「出られる」）。</p>
-    <table class="grid" id="reqGrid"></table>
-    <div class="row" style="margin-top:12px;">
-      <button class="line full" id="sendLineBtn">LINEで店長に送る</button>
-    </div>
-    <p class="sub" style="margin-top:8px;">LINEに届いたリンクを店長がタップすると、この希望がシフト表に自動で取り込まれます。</p>
-  </section>
+      <details>
+        <summary>いつもの出られる時間帯を変えたいとき</summary>
+        <p class="sub" style="margin-top:8px;">曜日ごとに「出られる時間帯」を決めておくと、毎月入力しなくて済みます。緑が出られる時間帯です。</p>
+        <table class="grid" id="patGrid"></table>
+      </details>
 
-  <!-- シフト表（店長用） -->
-  <section id="panelShift" class="card" hidden>
-    <button class="primary full" id="genBtn">みんなの希望から自動で作成</button>
-    <div class="status" id="statusBox" style="margin-top:12px;"></div>
-    <div class="chips" id="storeChips" style="margin-top:12px;"></div>
-    <div id="shiftTable" style="margin-top:10px;"></div>
-    <p class="sub" style="margin-top:8px;">★はベテラン。名前をタップすると、急に休むときの代わりの人が出ます。</p>
-    <button class="line full" id="shareLineBtn" style="margin-top:12px;">この店舗のシフトをLINEで共有</button>
-  </section>
+      <button class="line full" id="sendLineBtn" style="margin-top:14px;">LINEで店長に送る</button>
+      <p class="sub" style="margin-top:8px;">送り先は<b>店長との個別トーク</b>を選んでください。店長がリンクをタップすると、希望が自動で取り込まれます。</p>
+    </section>
+    <div class="note" style="margin-top:14px;">あなたの希望を見られるのは店長だけです。ほかのスタッフの希望は、この画面には表示されません。</div>
+  </div>
 
-  <section id="panelHours" class="card" hidden>
-    <p class="sub" style="margin:0 0 8px;">今週の勤務時間（上限に対して）</p>
-    <div id="hoursBox"></div>
-  </section>
+  <!-- ===== 店長用 ===== -->
+  <div id="mgrApp" hidden style="display:flex; flex-direction:column; gap:14px;">
+    <header>
+      <h1>シフトかんたん作成</h1>
+      <p class="sub" id="mgrMonthLabel"></p>
+    </header>
 
-  <!-- スタッフ・ルール -->
-  <section id="panelRules" class="card" hidden>
-    <p class="sub" style="margin:0 0 8px; font-weight:700; color:var(--ink);">自動作成で守っているルール</p>
-    <ul class="rules">
-      <li>どの時間帯にも、最低1人はベテラン（勤続1年以上）を入れる。新人だけの時間帯は作らない</li>
-      <li>昼（11:00〜15:00）は各店2人、夜（17:00〜21:00）は各店1人</li>
-      <li>朝（7:00〜）は本店のみ1人。早朝に出られる人だけ</li>
-      <li>学生さんは土日の昼を優先して入れる</li>
-      <li>一人ひとりの週の上限時間を超えない（扶養内の方は、月の上限÷4程度を目安に設定）</li>
-      <li>本人が出られると言った時間以外には入れない。同じ時間の店舗かけもちなし、1日最大2枠</li>
-      <li>特定の人に負担が偏らないよう、上限に対して勤務が少ない人から優先</li>
-      <li>（仮）定休日：本店＝水、駅前店＝火、バイパス店＝木</li>
-    </ul>
-    <p class="sub" style="margin:14px 0 6px; font-weight:700; color:var(--ink);">スタッフ</p>
-    <div style="overflow-x:auto;"><table class="staff" id="staffTable"></table></div>
-    <button class="ghost full" id="resetBtn" style="margin-top:12px;">サンプルデータに戻す</button>
-  </section>
+    <nav>
+      <button id="tabShift" aria-pressed="true">シフト表</button>
+      <button id="tabRules" aria-pressed="false">スタッフ・ルール</button>
+    </nav>
 
-  <footer>精神と時の部屋・仮想フェーズのお試しプロトタイプ（データはこの端末の中だけに保存されます）</footer>
+    <section id="panelShift" class="card">
+      <p class="sub" style="font-weight:700; color:var(--ink); margin-bottom:6px;">希望の提出状況（店長だけが見られます）</p>
+      <div id="reqStatus"></div>
+      <details id="reqDetails"><summary>一人ずつの「予定あり日」を見る</summary><ul class="req-list" id="reqList"></ul></details>
+      <button class="primary full" id="genBtn" style="margin-top:14px;">みんなの希望から自動で作成</button>
+      <div class="status" id="statusBox" style="margin-top:12px;"></div>
+      <div class="chips" id="storeChips" style="margin-top:12px;"></div>
+      <div id="shiftTable" style="margin-top:10px;"></div>
+      <p class="sub" style="margin-top:8px;">★はベテラン。名前をタップすると、急に休むときの代わりの人が出ます。</p>
+      <button class="line full" id="shareLineBtn" style="margin-top:12px;">この店舗のシフトをLINEで共有</button>
+    </section>
+
+    <section id="panelHours" class="card">
+      <p class="sub" style="margin:0 0 8px;">今月の勤務時間（月の上限に対して）</p>
+      <div id="hoursBox"></div>
+    </section>
+
+    <section id="panelRules" class="card" hidden>
+      <p class="sub" style="margin:0 0 8px; font-weight:700; color:var(--ink);">毎月のお願いの出し方</p>
+      <button class="line full" id="askLineBtn">スタッフに希望提出をお願いする（LINE）</button>
+      <p class="sub" style="margin:8px 0 0;">スタッフ全員のグループに1回送るだけです。届いたリンクからは「自分の予定」だけ入力でき、他の人の希望は見えません。</p>
+
+      <p class="sub" style="margin:18px 0 8px; font-weight:700; color:var(--ink);">自動作成で守っているルール</p>
+      <ul class="rules">
+        <li>どの時間帯にも、最低1人はベテラン（勤続1年以上）を入れる。新人だけの時間帯は作らない</li>
+        <li>昼（11:00〜15:00）は各店2人、夜（17:00〜21:00）は各店1人</li>
+        <li>朝（7:00〜）は本店のみ1人。早朝に出られる人だけ</li>
+        <li>学生さんは土日の昼を優先して入れる</li>
+        <li>一人ひとりの<b>月の上限時間</b>を超えない（扶養内の方は月の上限を設定）</li>
+        <li>予定あり日と、いつもの出られない時間帯には入れない。同じ時間の店舗かけもちなし、1日最大2枠</li>
+        <li>特定の人に負担が偏らないよう、上限に対して勤務が少ない人から優先</li>
+        <li>（仮）定休日：本店＝水、駅前店＝火、バイパス店＝木</li>
+      </ul>
+      <p class="sub" style="margin:14px 0 6px; font-weight:700; color:var(--ink);">スタッフ</p>
+      <div style="overflow-x:auto;"><table class="staff" id="staffTable"></table></div>
+      <button class="ghost full" id="resetBtn" style="margin-top:12px;">サンプルデータに戻す</button>
+    </section>
+  </div>
+
+  <footer id="foot"></footer>
 </div>
 
 <div class="sheet" id="sheet" hidden>
@@ -187,220 +234,318 @@
 (function(){
   "use strict";
   var E = window.ShiftEngine;
-  var KEY = "minoji-shift-v1";
+  var params = new URLSearchParams(location.search);
+  var IS_STAFF = params.has("staff");
 
-  var state = load() || fresh();
-  function fresh(){ return { stores: E.sampleStores(), staff: E.sampleStaff(), assign: null, activeStore: "A", me: "s01" }; }
-  function load(){ try { var s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch(e){ return null; } }
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
+  // ---- 対象の月（既定は来月。?month=2026-11 で指定も可） ----
+  var MONTH = (function(){
+    var m = /^(\d{4})-(\d{2})$/.exec(params.get("month") || "");
+    if (m) return { y: +m[1], m: +m[2] };
+    var t = new Date(); var y = t.getFullYear(), mo = t.getMonth() + 2; if (mo > 12){ mo = 1; y++; }
+    return { y: y, m: mo };
+  })();
+  var MONTH_KEY = MONTH.y + "-" + (MONTH.m < 10 ? "0" : "") + MONTH.m;
+  var DAYS = E.monthDays(MONTH.y, MONTH.m);
+  var MONTH_LABEL = MONTH.y + "年" + MONTH.m + "月";
+  var BASE_URL = location.origin + location.pathname;
 
-  function person(id){ return state.staff.filter(function(p){ return p.id === id; })[0]; }
-  function storeName(id){ return state.stores.filter(function(s){ return s.id === id; })[0].name; }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+  function fmt(day){ return (+day.key.slice(5,7)) + "/" + day.dom + "(" + E.DAYS[day.dow] + ")"; }
   function toast(msg){
     var t = document.getElementById("toast"); t.textContent = msg; t.hidden = false;
-    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 2600);
+    clearTimeout(toast._t); toast._t = setTimeout(function(){ t.hidden = true; }, 2800);
   }
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
-
-  // ---- LINEで届いたリンクからの取り込み（#req=スタッフID.希望ビット列） ----
-  (function importFromHash(){
-    var m = /#req=([a-z0-9]+)\.([01]{21})/.exec(location.hash);
-    if (!m) return;
-    var p = person(m[1]);
-    if (p){ p.avail = m[2]; state.assign = null; save(); setTimeout(function(){ toast(p.name + "さんの希望を取り込みました"); }, 300); }
-    try { history.replaceState(null, "", location.pathname); } catch(e){}
-  })();
-
-  // ---- タブ ----
-  var tabs = { req: ["tabReq","panelReq"], shift: ["tabShift","panelShift","panelHours"], rules: ["tabRules","panelRules"] };
-  function setTab(name){
-    Object.keys(tabs).forEach(function(k){
-      document.getElementById(tabs[k][0]).setAttribute("aria-pressed", k === name ? "true" : "false");
-      tabs[k].slice(1).forEach(function(id){ document.getElementById(id).hidden = k !== name; });
-    });
-    if (name === "shift") renderShift();
-    if (name === "rules") renderStaff();
-    if (name === "req") renderReq();
+  function openLine(text){
+    var url = "https://line.me/R/share?text=" + encodeURIComponent(text);
+    if (url.length > 7000){
+      try { navigator.clipboard.writeText(text); toast("長いのでコピーしました。LINEのトークに貼り付けてください"); return; } catch(e){}
+    }
+    window.open(url, "_blank");
   }
-  document.getElementById("tabReq").onclick = function(){ setTab("req"); };
-  document.getElementById("tabShift").onclick = function(){ setTab("shift"); };
-  document.getElementById("tabRules").onclick = function(){ setTab("rules"); };
+  function busyBits(busy){ return DAYS.map(function(d){ return busy.indexOf(d.key) >= 0 ? "1" : "0"; }).join(""); }
 
-  // ---- 希望を出す ----
-  var meSel = document.getElementById("meSel");
-  function renderReq(){
-    meSel.innerHTML = state.staff.map(function(p){
-      return '<option value="' + p.id + '"' + (p.id === state.me ? " selected" : "") + ">" + esc(p.name) + "（" + esc(p.type) + "）</option>";
-    }).join("");
-    var p = person(state.me);
-    var canMorning = p.early && p.stores.indexOf("A") >= 0;
-    var html = "<tr><th></th>" + E.SLOTS.map(function(sl){
-      return "<th>" + sl.label + "<br><span style='font-weight:500'>" + sl.time.replace("〜","-") + "</span></th>";
-    }).join("") + "</tr>";
-    for (var d = 0; d < 7; d++){
-      html += '<tr><td class="day">' + E.DAYS[d] + "</td>";
-      E.SLOTS.forEach(function(sl){
-        var disabled = sl.id === "m" && !canMorning;
-        var on = !disabled && E.isAvailable(p, d, sl.id);
-        html += '<td><button class="tog' + (on ? " on" : "") + '" data-d="' + d + '" data-s="' + sl.id + '"' +
-          (disabled ? " disabled" : "") + ">" + (disabled ? "—" : (on ? "◯" : "×")) + "</button></td>";
+  /* ======================================================================
+     スタッフ用画面（自分の予定だけ。ほかの人のデータはこの端末に持たない）
+     ====================================================================== */
+  function runStaff(){
+    var KEY = "minoji-staff-v2";
+    var names = E.sampleStaff(); // 名前・区分・早朝可否・いつもの時間帯の初期値だけ使う（希望は持たない）
+    var st = (function(){ try { var s = JSON.parse(localStorage.getItem(KEY)); if (s && s.month === MONTH_KEY) return s; } catch(e){} return null; })()
+      || { month: MONTH_KEY, me: names[0].id, people: {} };
+    function save(){ try { localStorage.setItem(KEY, JSON.stringify(st)); } catch(e){} }
+    function me(){ return names.filter(function(p){ return p.id === st.me; })[0]; }
+    function mine(){
+      if (!st.people[st.me]) st.people[st.me] = { pattern: me().pattern, busy: [] };
+      return st.people[st.me];
+    }
+
+    document.getElementById("staffApp").hidden = false;
+    document.getElementById("staffMonthLabel").textContent = "美濃路食堂・" + MONTH_LABEL + "分";
+    document.getElementById("foot").textContent = "精神と時の部屋・仮想フェーズのお試しプロトタイプ（入力内容はこの端末と、あなたが送ったLINEの中だけにあります）";
+
+    var sel = document.getElementById("meSel");
+    sel.innerHTML = names.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + "（" + esc(p.type) + "）</option>"; }).join("");
+    sel.value = st.me;
+    sel.onchange = function(){ st.me = sel.value; save(); render(); };
+
+    function render(){
+      var m = mine(), html = "";
+      E.DAYS.forEach(function(w, i){ html += '<div class="wd' + (i === 5 ? " sat" : i === 6 ? " sun" : "") + '">' + w + "</div>"; });
+      for (var i = 0; i < DAYS[0].dow; i++) html += '<div class="blank"></div>';
+      DAYS.forEach(function(d){
+        var busy = m.busy.indexOf(d.key) >= 0;
+        html += '<button class="daybtn' + (busy ? " busy" : "") + '" data-k="' + d.key + '" aria-pressed="' + busy + '">' + d.dom +
+          "<small>" + (busy ? "予定あり" : "出られる") + "</small></button>";
       });
-      html += "</tr>";
+      document.getElementById("cal").innerHTML = html;
+      document.getElementById("cntBusy").textContent = "予定あり " + m.busy.length + "日";
+      document.getElementById("cntFree").textContent = "出られる " + (DAYS.length - m.busy.length) + "日";
+
+      var p = me(), canMorning = p.early && p.stores.indexOf("A") >= 0;
+      var g = "<tr><th></th>" + E.SLOTS.map(function(sl){ return "<th>" + sl.label + "<br><span style='font-weight:500'>" + sl.time.replace("〜","-") + "</span></th>"; }).join("") + "</tr>";
+      for (var d = 0; d < 7; d++){
+        g += '<tr><td class="day">' + E.DAYS[d] + "</td>";
+        E.SLOTS.forEach(function(sl){
+          var disabled = sl.id === "m" && !canMorning;
+          var on = !disabled && E.inPattern(m, d, sl.id);
+          g += '<td><button class="tog' + (on ? " on" : "") + '" data-d="' + d + '" data-s="' + sl.id + '"' + (disabled ? " disabled" : "") + ">" + (disabled ? "—" : (on ? "◯" : "×")) + "</button></td>";
+        });
+        g += "</tr>";
+      }
+      document.getElementById("patGrid").innerHTML = g;
     }
-    document.getElementById("reqGrid").innerHTML = html;
+    document.getElementById("cal").onclick = function(e){
+      var b = e.target.closest(".daybtn"); if (!b) return;
+      var m = mine(), i = m.busy.indexOf(b.dataset.k);
+      if (i >= 0) m.busy.splice(i, 1); else m.busy.push(b.dataset.k);
+      save(); render();
+    };
+    document.getElementById("patGrid").onclick = function(e){
+      var b = e.target.closest("button.tog"); if (!b || b.disabled) return;
+      var m = mine(), i = E.patIndex(+b.dataset.d, b.dataset.s), bits = m.pattern.split("");
+      bits[i] = bits[i] === "1" ? "0" : "1"; m.pattern = bits.join(""); save(); render();
+    };
+    document.getElementById("sendLineBtn").onclick = function(){
+      var m = mine(), p = me();
+      var labels = DAYS.filter(function(d){ return m.busy.indexOf(d.key) >= 0; }).map(fmt);
+      var link = BASE_URL + "?month=" + MONTH_KEY + "#req=" + p.id + "." + MONTH_KEY.replace("-", "") + "." + busyBits(m.busy) + "." + m.pattern;
+      var text = "【" + MONTH.m + "月のシフト希望】" + p.name + "\n予定がある日：" + (labels.length ? labels.join("、") : "なし") +
+        "\n（上記以外は出られます）\n\n▼店長用（タップで取り込み）\n" + link;
+      openLine(text);
+    };
+    render();
   }
-  meSel.onchange = function(){ state.me = meSel.value; save(); renderReq(); };
-  document.getElementById("reqGrid").onclick = function(e){
-    var b = e.target.closest("button.tog"); if (!b || b.disabled) return;
-    var p = person(state.me), i = E.availIndex(+b.dataset.d, b.dataset.s);
-    var bits = p.avail.split(""); bits[i] = bits[i] === "1" ? "0" : "1"; p.avail = bits.join("");
-    state.assign = null; save(); renderReq();
-  };
-  document.getElementById("sendLineBtn").onclick = function(){
-    var p = person(state.me);
-    var lines = [];
-    for (var d = 0; d < 7; d++){
-      var ok = E.SLOTS.filter(function(sl){ return E.isAvailable(p, d, sl.id); }).map(function(sl){ return sl.label; });
-      lines.push(E.DAYS[d] + "：" + (ok.length ? ok.join("・") : "×"));
-    }
-    var link = location.origin + location.pathname + "#req=" + p.id + "." + p.avail;
-    var text = "【来週のシフト希望】" + p.name + "\n" + lines.join("\n") + "\n\n▼店長用（タップで取り込み）\n" + link;
-    window.open("https://line.me/R/share?text=" + encodeURIComponent(text), "_blank");
-  };
 
-  // ---- シフト表 ----
-  var selected = null; // {store, day, slot, pid}
-  document.getElementById("genBtn").onclick = function(){
-    var r = E.generate(state.stores, state.staff);
-    state.assign = r.assign; save(); renderShift();
-    toast("シフトを作成しました");
-  };
-  function renderShift(){
-    var chips = state.stores.map(function(s){
-      return '<button class="chip" data-store="' + s.id + '" aria-pressed="' + (s.id === state.activeStore) + '">' + esc(s.name) + "</button>";
-    }).join("");
-    document.getElementById("storeChips").innerHTML = chips;
-    var box = document.getElementById("shiftTable"), statusBox = document.getElementById("statusBox");
-    if (!state.assign){
-      box.innerHTML = '<p class="sub">まだ作成していません。上のボタンを押すと、みんなの希望とルールをもとに自動で組みます。</p>';
-      statusBox.innerHTML = ""; document.getElementById("hoursBox").innerHTML = "";
-      return;
+  /* ======================================================================
+     店長用画面
+     ====================================================================== */
+  function runManager(){
+    var KEY = "minoji-shift-v2";
+    function fresh(){
+      var staff = E.seedBusy(E.sampleStaff(), DAYS), sub = {};
+      staff.forEach(function(p){ sub[p.id] = true; });
+      return { month: MONTH_KEY, stores: E.sampleStores(), staff: staff, submitted: sub, assign: null, activeStore: "A" };
     }
-    var iss = E.findIssues(state.assign, state.stores, state.staff);
-    var b = [];
-    b.push(iss.violations.length ? '<span class="badge warn">ルール違反 ' + iss.violations.length + "件</span>" : '<span class="badge ok">ルール違反 0件</span>');
-    var lackN = iss.shortages.reduce(function(a, x){ return a + x.missing; }, 0);
-    b.push(lackN ? '<span class="badge warn">人手不足 ' + lackN + "人分</span>" : '<span class="badge ok">人手不足なし</span>');
-    if (iss.noVeteran.length) b.push('<span class="badge warn">ベテラン不在 ' + iss.noVeteran.length + "枠</span>");
-    statusBox.innerHTML = b.join("");
+    function load(){ try { var s = JSON.parse(localStorage.getItem(KEY)); return s && s.month === MONTH_KEY ? s : null; } catch(e){ return null; } }
+    var state = load() || fresh();
+    function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e){} }
+    function person(id){ return state.staff.filter(function(p){ return p.id === id; })[0]; }
+    function storeName(id){ return state.stores.filter(function(s){ return s.id === id; })[0].name; }
+    function dayOf(key){ return DAYS.filter(function(d){ return d.key === key; })[0]; }
 
-    var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
-    var slots = E.SLOTS.filter(function(sl){ return sl.id !== "m" || st.hasMorning; });
-    var html = '<table class="shift"><tr><th></th>' + slots.map(function(sl){ return "<th>" + sl.label + "</th>"; }).join("") + "</tr>";
-    for (var d = 0; d < 7; d++){
-      if (st.closedDay === d){ html += '<tr class="closed"><td class="day">' + E.DAYS[d] + '</td><td colspan="' + slots.length + '">定休日</td></tr>'; continue; }
-      html += '<tr><td class="day">' + E.DAYS[d] + "</td>";
-      slots.forEach(function(sl){
-        var cell = state.assign[st.id][d][sl.id], need = st.need[sl.id];
-        var noVet = !cell.some(function(pid){ return person(pid) && person(pid).veteran; });
-        var inner = cell.map(function(pid){
-          var p = person(pid); if (!p) return "";
-          var sel = selected && selected.store === st.id && selected.day === d && selected.slot === sl.id && selected.pid === pid;
-          return '<span class="who' + (sel ? " sel" : "") + '" data-d="' + d + '" data-s="' + sl.id + '" data-p="' + pid + '">' +
-            (p.veteran ? '<span class="star">★</span>' : "") + esc(p.name) + "</span>";
-        }).join("");
-        if (cell.length < need) inner += '<span class="lack">あと' + (need - cell.length) + "人</span>";
-        if (cell.length && noVet) inner += '<span class="lack">ベテラン不在</span>';
-        html += '<td class="' + ((cell.length < need || noVet) ? "cell-warn" : "") + '">' + inner + "</td>";
+    document.getElementById("mgrApp").hidden = false;
+    document.getElementById("mgrMonthLabel").textContent = "美濃路食堂 お試し版（3店舗）・" + MONTH_LABEL + "のシフト";
+    document.getElementById("foot").textContent = "精神と時の部屋・仮想フェーズのお試しプロトタイプ（データはこの端末の中だけに保存されます）";
+
+    // ---- LINEで届いたリンクからの取り込み ----
+    function importFromHash(){
+      var m = /#req=([a-z0-9]+)\.(\d{6})\.([01]{28,31})\.([01]{21})/.exec(location.hash);
+      if (!m) return;
+      var p = person(m[1]);
+      try { history.replaceState(null, "", location.pathname + location.search); } catch(e){}
+      if (!p) return;
+      if (m[2] !== MONTH_KEY.replace("-", "") || m[3].length !== DAYS.length){
+        setTimeout(function(){ toast("対象外の月の希望でした（" + MONTH_LABEL + "分のみ取り込めます）"); }, 300); return;
+      }
+      p.busy = DAYS.filter(function(d, i){ return m[3].charAt(i) === "1"; }).map(function(d){ return d.key; });
+      p.pattern = m[4]; state.submitted[p.id] = true; state.assign = null; save();
+      setTimeout(function(){ toast(p.name + "さんの希望を取り込みました（予定あり " + p.busy.length + "日）"); renderShift(); }, 300);
+    }
+    importFromHash();
+    window.addEventListener("hashchange", importFromHash);
+
+    // ---- タブ ----
+    var tabs = { shift: ["tabShift","panelShift","panelHours"], rules: ["tabRules","panelRules"] };
+    function setTab(name){
+      Object.keys(tabs).forEach(function(k){
+        document.getElementById(tabs[k][0]).setAttribute("aria-pressed", k === name ? "true" : "false");
+        tabs[k].slice(1).forEach(function(id){ document.getElementById(id).hidden = k !== name; });
       });
-      html += "</tr>";
+      if (name === "shift") renderShift();
+      if (name === "rules") renderStaff();
     }
-    html += "</table>";
-    box.innerHTML = html;
+    document.getElementById("tabShift").onclick = function(){ setTab("shift"); };
+    document.getElementById("tabRules").onclick = function(){ setTab("rules"); };
 
-    document.getElementById("hoursBox").innerHTML = state.staff.map(function(p){
-      var h = iss.hours[p.id], pct = Math.min(100, Math.round(h / p.cap * 100));
-      return '<div class="hours-row"><span class="nm">' + (p.veteran ? '<span style="color:var(--vet)">★</span>' : "") + esc(p.name) + '</span>' +
-        '<div class="bar"><div style="width:' + pct + '%"></div></div><span class="num">' + h + " / " + p.cap + "h</span></div>";
-    }).join("");
-  }
-  document.getElementById("storeChips").onclick = function(e){
-    var c = e.target.closest(".chip"); if (!c) return;
-    state.activeStore = c.dataset.store; save(); renderShift();
-  };
-  document.getElementById("shiftTable").onclick = function(e){
-    var w = e.target.closest(".who"); if (!w) return;
-    selected = { store: state.activeStore, day: +w.dataset.d, slot: w.dataset.s, pid: w.dataset.p };
-    renderShift(); openSheet();
-  };
-
-  // ---- 代役パネル ----
-  var sheet = document.getElementById("sheet");
-  function openSheet(){
-    var p = person(selected.pid), sl = E.SLOTS.filter(function(x){ return x.id === selected.slot; })[0];
-    var res = E.substitutes(state.assign, state.stores, state.staff, selected.store, selected.day, selected.slot, selected.pid);
-    document.getElementById("sheetTitle").textContent = p.name + "さんが休む場合（" + storeName(selected.store) + "・" + E.DAYS[selected.day] + "曜・" + sl.label + "）";
-    document.getElementById("sheetNote").textContent = res.mustBeVeteran
-      ? "この枠のベテランが" + p.name + "さんだけなので、ベテランの中から候補を出しています。"
-      : "出られる人のうち、今週の勤務が少ない人から順に並んでいます。タップで入れ替えます。";
-    var list = document.getElementById("sheetList");
-    if (!res.candidates.length){
-      list.innerHTML = '<p class="sub" style="color:var(--warn);">条件に合う代わりの人がいません。店長が入るか、別の時間の人に相談が必要です。</p>';
-    } else {
-      list.innerHTML = res.candidates.map(function(c){
-        return '<div class="cand" data-p="' + c.person.id + '"><span>' + (c.person.veteran ? '<span style="color:var(--vet)">★</span>' : "") +
-          esc(c.person.name) + '<span class="sub" style="margin-left:6px;">' + esc(c.person.type) + '</span></span><span class="sub">今週 ' + c.hours + " / " + c.person.cap + "h</span></div>";
+    // ---- 希望の提出状況（店長だけ） ----
+    function renderReqStatus(){
+      var done = state.staff.filter(function(p){ return state.submitted[p.id]; });
+      var miss = state.staff.filter(function(p){ return !state.submitted[p.id]; });
+      document.getElementById("reqStatus").innerHTML =
+        '<span class="badge ' + (miss.length ? "warn" : "ok") + '">' + state.staff.length + "人中 " + done.length + "人 提出ずみ</span>" +
+        (miss.length ? '<p class="sub" style="margin-top:6px; color:var(--warn); font-weight:700;">未提出：' + miss.map(function(p){ return esc(p.name); }).join("、") + "</p>" : "");
+      document.getElementById("reqList").innerHTML = state.staff.map(function(p){
+        if (!state.submitted[p.id]) return '<li><span class="who-n">' + esc(p.name) + '</span> <span class="miss">未提出</span></li>';
+        var days = DAYS.filter(function(d){ return p.busy.indexOf(d.key) >= 0; }).map(function(d){ return d.dom; });
+        return '<li><span class="who-n">' + esc(p.name) + "</span>　予定あり " + days.length + "日" + (days.length ? "（" + days.join("・") + "日）" : "") + "</li>";
       }).join("");
     }
-    sheet.hidden = false;
-  }
-  document.getElementById("sheetClose").onclick = function(){ sheet.hidden = true; selected = null; renderShift(); };
-  document.getElementById("sheetList").onclick = function(e){
-    var c = e.target.closest(".cand"); if (!c) return;
-    var cell = state.assign[selected.store][selected.day][selected.slot];
-    var i = cell.indexOf(selected.pid); if (i >= 0) cell[i] = c.dataset.p;
-    var from = person(selected.pid).name, to = person(c.dataset.p).name;
-    save(); sheet.hidden = true; selected = null; renderShift();
-    toast(from + "さん → " + to + "さんに入れ替えました");
-  };
 
-  document.getElementById("shareLineBtn").onclick = function(){
-    if (!state.assign){ toast("先にシフトを作成してください"); return; }
-    var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
-    var lines = ["【来週のシフト】" + st.name];
-    for (var d = 0; d < 7; d++){
-      if (st.closedDay === d){ lines.push(E.DAYS[d] + "：定休日"); continue; }
-      var parts = E.SLOTS.filter(function(sl){ return E.storeHasSlot(st, d, sl.id); }).map(function(sl){
-        return sl.label + " " + (state.assign[st.id][d][sl.id].map(function(pid){ return person(pid).name; }).join("・") || "未定");
+    // ---- シフト表 ----
+    var selected = null;
+    document.getElementById("genBtn").onclick = function(){
+      var r = E.generate(state.stores, state.staff, DAYS);
+      state.assign = r.assign; save(); renderShift();
+      toast("シフトを作成しました");
+    };
+    function renderShift(){
+      renderReqStatus();
+      document.getElementById("storeChips").innerHTML = state.stores.map(function(s){
+        return '<button class="chip" data-store="' + s.id + '" aria-pressed="' + (s.id === state.activeStore) + '">' + esc(s.name) + "</button>";
+      }).join("");
+      var box = document.getElementById("shiftTable"), statusBox = document.getElementById("statusBox");
+      if (!state.assign){
+        box.innerHTML = '<p class="sub">まだ作成していません。上のボタンを押すと、みんなの希望とルールをもとに1か月分を自動で組みます。</p>';
+        statusBox.innerHTML = ""; document.getElementById("hoursBox").innerHTML = "";
+        return;
+      }
+      var iss = E.findIssues(state.assign, state.stores, state.staff, DAYS);
+      var b = [];
+      b.push(iss.violations.length ? '<span class="badge warn">ルール違反 ' + iss.violations.length + "件</span>" : '<span class="badge ok">ルール違反 0件</span>');
+      var lackN = iss.shortages.reduce(function(a, x){ return a + x.missing; }, 0);
+      b.push(lackN ? '<span class="badge warn">人手不足 ' + lackN + "人分</span>" : '<span class="badge ok">人手不足なし</span>');
+      if (iss.noVeteran.length) b.push('<span class="badge warn">ベテラン不在 ' + iss.noVeteran.length + "枠</span>");
+      statusBox.innerHTML = b.join("");
+
+      var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
+      var slots = E.SLOTS.filter(function(sl){ return sl.id !== "m" || st.hasMorning; });
+      var html = '<table class="shift"><tr><th>' + MONTH.m + '月</th>' + slots.map(function(sl){ return "<th>" + sl.label + "</th>"; }).join("") + "</tr>";
+      DAYS.forEach(function(day){
+        var cls = (day.dow === 0 ? "mon " : "") + (st.closedDay === day.dow ? "closed" : "");
+        var dcls = day.dow === 5 ? " sat" : day.dow === 6 ? " sun" : "";
+        if (st.closedDay === day.dow){
+          html += '<tr class="' + cls + '"><td class="day' + dcls + '">' + day.dom + "(" + E.DAYS[day.dow] + ")" + '</td><td colspan="' + slots.length + '">定休日</td></tr>'; return;
+        }
+        html += '<tr class="' + cls + '"><td class="day' + dcls + '">' + day.dom + "(" + E.DAYS[day.dow] + ")" + "</td>";
+        slots.forEach(function(sl){
+          var cell = state.assign[st.id][day.key][sl.id], need = st.need[sl.id];
+          var noVet = !cell.some(function(pid){ return person(pid) && person(pid).veteran; });
+          var inner = cell.map(function(pid){
+            var p = person(pid); if (!p) return "";
+            var sel = selected && selected.store === st.id && selected.day === day.key && selected.slot === sl.id && selected.pid === pid;
+            return '<span class="who' + (sel ? " sel" : "") + '" data-d="' + day.key + '" data-s="' + sl.id + '" data-p="' + pid + '">' +
+              (p.veteran ? '<span class="star">★</span>' : "") + esc(p.name) + "</span>";
+          }).join("");
+          if (cell.length < need) inner += '<span class="lack">あと' + (need - cell.length) + "人</span>";
+          if (cell.length && noVet) inner += '<span class="lack">ベテラン不在</span>';
+          html += '<td class="' + ((cell.length < need || noVet) ? "cell-warn" : "") + '">' + inner + "</td>";
+        });
+        html += "</tr>";
       });
-      lines.push(E.DAYS[d] + "：" + parts.join(" ／ "));
+      html += "</table>";
+      box.innerHTML = html;
+
+      document.getElementById("hoursBox").innerHTML = state.staff.map(function(p){
+        var h = iss.hours[p.id], pct = Math.min(100, Math.round(h / p.cap * 100));
+        return '<div class="hours-row"><span class="nm">' + (p.veteran ? '<span style="color:var(--vet)">★</span>' : "") + esc(p.name) + '</span>' +
+          '<div class="bar"><div style="width:' + pct + '%"></div></div><span class="num">' + h + " / " + p.cap + "h</span></div>";
+      }).join("");
     }
-    window.open("https://line.me/R/share?text=" + encodeURIComponent(lines.join("\n")), "_blank");
-  };
+    document.getElementById("storeChips").onclick = function(e){
+      var c = e.target.closest(".chip"); if (!c) return;
+      state.activeStore = c.dataset.store; save(); renderShift();
+    };
+    document.getElementById("shiftTable").onclick = function(e){
+      var w = e.target.closest(".who"); if (!w) return;
+      selected = { store: state.activeStore, day: w.dataset.d, slot: w.dataset.s, pid: w.dataset.p };
+      renderShift(); openSheet();
+    };
 
-  // ---- スタッフ・ルール ----
-  function renderStaff(){
-    var html = "<tr><th>名前</th><th>区分</th><th>ベテラン</th><th>店舗</th><th>早朝</th><th>週上限</th></tr>";
-    state.staff.forEach(function(p){
-      html += "<tr><td>" + esc(p.name) + "</td><td>" + esc(p.type) + '</td>' +
-        '<td><input type="checkbox" data-vet="' + p.id + '"' + (p.veteran ? " checked" : "") + "></td>" +
-        "<td>" + p.stores.map(storeName).join("・") + "</td><td>" + (p.early ? "◯" : "") + "</td>" +
-        '<td><input type="number" min="0" max="60" step="4" data-cap="' + p.id + '" value="' + p.cap + '">h</td></tr>';
-    });
-    document.getElementById("staffTable").innerHTML = html;
+    // ---- 代役パネル ----
+    var sheet = document.getElementById("sheet");
+    function openSheet(){
+      var p = person(selected.pid), sl = E.SLOTS.filter(function(x){ return x.id === selected.slot; })[0];
+      var res = E.substitutes(state.assign, state.stores, state.staff, DAYS, selected.store, selected.day, selected.slot, selected.pid);
+      document.getElementById("sheetTitle").textContent = p.name + "さんが休む場合（" + storeName(selected.store) + "・" + fmt(dayOf(selected.day)) + "・" + sl.label + "）";
+      document.getElementById("sheetNote").textContent = res.mustBeVeteran
+        ? "この枠のベテランが" + p.name + "さんだけなので、ベテランの中から候補を出しています。"
+        : "出られる人のうち、今月の勤務が少ない人から順に並んでいます。タップで入れ替えます。";
+      var list = document.getElementById("sheetList");
+      if (!res.candidates.length){
+        list.innerHTML = '<p class="sub" style="color:var(--warn);">条件に合う代わりの人がいません。店長が入るか、別の時間の人に相談が必要です。</p>';
+      } else {
+        list.innerHTML = res.candidates.map(function(c){
+          return '<div class="cand" data-p="' + c.person.id + '"><span>' + (c.person.veteran ? '<span style="color:var(--vet)">★</span>' : "") +
+            esc(c.person.name) + '<span class="sub" style="margin-left:6px;">' + esc(c.person.type) + '</span></span><span class="sub">今月 ' + c.hours + " / " + c.person.cap + "h</span></div>";
+        }).join("");
+      }
+      sheet.hidden = false;
+    }
+    document.getElementById("sheetClose").onclick = function(){ sheet.hidden = true; selected = null; renderShift(); };
+    document.getElementById("sheetList").onclick = function(e){
+      var c = e.target.closest(".cand"); if (!c) return;
+      var cell = state.assign[selected.store][selected.day][selected.slot];
+      var i = cell.indexOf(selected.pid); if (i >= 0) cell[i] = c.dataset.p;
+      var from = person(selected.pid).name, to = person(c.dataset.p).name;
+      save(); sheet.hidden = true; selected = null; renderShift();
+      toast(from + "さん → " + to + "さんに入れ替えました");
+    };
+
+    document.getElementById("shareLineBtn").onclick = function(){
+      if (!state.assign){ toast("先にシフトを作成してください"); return; }
+      var st = state.stores.filter(function(s){ return s.id === state.activeStore; })[0];
+      var lines = ["【" + MONTH.m + "月のシフト】" + st.name];
+      DAYS.forEach(function(day){
+        if (st.closedDay === day.dow){ lines.push(fmt(day) + " 定休日"); return; }
+        var parts = E.SLOTS.filter(function(sl){ return E.storeHasSlot(st, day, sl.id); }).map(function(sl){
+          return sl.label + ":" + (state.assign[st.id][day.key][sl.id].map(function(pid){ return person(pid).name; }).join("・") || "未定");
+        });
+        lines.push(fmt(day) + " " + parts.join(" "));
+      });
+      openLine(lines.join("\n"));
+    };
+
+    // ---- スタッフ・ルール ----
+    document.getElementById("askLineBtn").onclick = function(){
+      var text = "【" + MONTH.m + "月のシフト希望のお願い】\n予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。\n" +
+        "ほかの人には見えません。\n\n▼入力はこちら\n" + BASE_URL + "?staff&month=" + MONTH_KEY;
+      openLine(text);
+    };
+    function renderStaff(){
+      var html = "<tr><th>名前</th><th>区分</th><th>ベテラン</th><th>店舗</th><th>早朝</th><th>月上限</th></tr>";
+      state.staff.forEach(function(p){
+        html += "<tr><td>" + esc(p.name) + "</td><td>" + esc(p.type) + '</td>' +
+          '<td><input type="checkbox" data-vet="' + p.id + '"' + (p.veteran ? " checked" : "") + "></td>" +
+          "<td>" + p.stores.map(storeName).join("・") + "</td><td>" + (p.early ? "◯" : "") + "</td>" +
+          '<td><input type="number" min="0" max="250" step="4" data-cap="' + p.id + '" value="' + p.cap + '">h</td></tr>';
+      });
+      document.getElementById("staffTable").innerHTML = html;
+    }
+    document.getElementById("staffTable").onchange = function(e){
+      var t = e.target;
+      if (t.dataset.vet){ person(t.dataset.vet).veteran = t.checked; }
+      if (t.dataset.cap){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0) person(t.dataset.cap).cap = v; }
+      state.assign = null; save();
+      toast("変更しました。シフト表で作り直してください");
+    };
+    document.getElementById("resetBtn").onclick = function(){
+      state = fresh(); save(); renderStaff(); toast("サンプルデータに戻しました");
+    };
+
+    renderShift();
   }
-  document.getElementById("staffTable").onchange = function(e){
-    var t = e.target;
-    if (t.dataset.vet){ person(t.dataset.vet).veteran = t.checked; }
-    if (t.dataset.cap){ var v = parseInt(t.value, 10); if (!isNaN(v) && v >= 0) person(t.dataset.cap).cap = v; }
-    state.assign = null; save();
-    toast("変更しました。シフト表で作り直してください");
-  };
-  document.getElementById("resetBtn").onclick = function(){
-    state = fresh(); save(); renderStaff(); toast("サンプルデータに戻しました");
-  };
 
-  renderReq();
+  if (IS_STAFF) runStaff(); else runManager();
 })();
 </script>
 </body>

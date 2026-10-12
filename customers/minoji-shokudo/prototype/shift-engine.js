@@ -1,12 +1,16 @@
 /*
-  美濃路食堂 シフト自動作成エンジン（お試し版）
+  美濃路食堂 シフト自動作成エンジン（お試し版・月単位）
   - ブラウザでは window.ShiftEngine、Node では require() で使える
+  - 考え方：
+    ・スタッフごとに「いつもの出られる時間帯（曜日×朝昼夜）」を1回だけ決めておく
+    ・毎月は「予定がある日」だけを申告する（申告しなかった日は出られる扱い）
+    ・出られる＝ いつもの時間帯に入っていて、かつ予定あり日ではない
   - 清水さんのルール：
     1. 各枠に最低1人ベテラン（新人だけの時間帯を作らない。昼ピークは特に必須）
     2. 学生は土日の昼を優先して入れる
-    3. 週の上限時間（扶養内など）を超えない
+    3. 月の上限時間（扶養内など）を超えない
     4. 朝（7:00〜）は本店のみ。早朝に出られる人だけ
-    5. 本人の希望（出られる枠）以外には入れない
+    5. 本人が出られない日・時間帯には入れない
     6. 同じ時間に2店舗かけもちはしない。1日最大2枠まで
     7. 負担が偏らないよう、上限に対する勤務時間の割合が低い人から優先
 */
@@ -26,13 +30,29 @@
   var WEEKEND = { 5: true, 6: true };
   var MAX_SLOTS_PER_DAY = 2;
 
-  function availIndex(day, slotId) { return day * 3 + SLOT_INDEX[slotId]; }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+
+  // その月の日付一覧。dow は 月=0 … 日=6
+  function monthDays(year, month) {
+    var n = new Date(year, month, 0).getDate(), out = [];
+    for (var d = 1; d <= n; d++) {
+      out.push({ key: year + "-" + pad(month) + "-" + pad(d), dom: d, dow: (new Date(year, month - 1, d).getDay() + 6) % 7 });
+    }
+    return out;
+  }
+
+  function patIndex(dow, slotId) { return dow * 3 + SLOT_INDEX[slotId]; }
+  // いつもの出られる時間帯（曜日×枠）
+  function inPattern(person, dow, slotId) {
+    return (person.pattern || "").charAt(patIndex(dow, slotId)) === "1";
+  }
+  function isBusy(person, dayKey) { return (person.busy || []).indexOf(dayKey) >= 0; }
+  // その日・その枠に出られるか（いつもの時間帯 かつ 予定あり日でない）
   function isAvailable(person, day, slotId) {
-    return (person.avail || "").charAt(availIndex(day, slotId)) === "1";
+    return inPattern(person, day.dow, slotId) && !isBusy(person, day.key);
   }
   function slotById(id) { return SLOTS[SLOT_INDEX[id]]; }
 
-  // 本人の希望・店舗・早朝の条件だけを見た「出られるかどうか」（時間上限は別判定）
   function basicEligible(person, store, day, slotId) {
     if (!isAvailable(person, day, slotId)) return false;
     if (person.stores.indexOf(store.id) < 0) return false;
@@ -40,65 +60,63 @@
     return true;
   }
 
-  function emptySchedule(stores) {
+  function emptySchedule(stores, days) {
     var assign = {};
     stores.forEach(function (s) {
       assign[s.id] = {};
-      for (var d = 0; d < 7; d++) {
-        assign[s.id][d] = {};
-        SLOTS.forEach(function (sl) { assign[s.id][d][sl.id] = []; });
-      }
+      days.forEach(function (day) {
+        assign[s.id][day.key] = {};
+        SLOTS.forEach(function (sl) { assign[s.id][day.key][sl.id] = []; });
+      });
     });
     return assign;
   }
 
   function storeHasSlot(store, day, slotId) {
-    if (store.closedDay === day) return false;
+    if (store.closedDay === day.dow) return false;
     if (slotId === "m" && !store.hasMorning) return false;
     return (store.need[slotId] || 0) > 0;
   }
 
-  // その人が、その日・その枠にすでにどこかの店で入っているか / その日何枠入っているか
-  function dayLoad(assign, stores, personId, day) {
+  function dayLoad(assign, stores, personId, dayKey) {
     var count = 0, slotsTaken = {};
     stores.forEach(function (s) {
       SLOTS.forEach(function (sl) {
-        if (assign[s.id][day][sl.id].indexOf(personId) >= 0) { count++; slotsTaken[sl.id] = true; }
+        var cell = assign[s.id][dayKey] && assign[s.id][dayKey][sl.id];
+        if (cell && cell.indexOf(personId) >= 0) { count++; slotsTaken[sl.id] = true; }
       });
     });
     return { count: count, slots: slotsTaken };
   }
 
-  function computeHours(assign, stores, staff) {
+  function computeHours(assign, stores, staff, days) {
     var hours = {};
     staff.forEach(function (p) { hours[p.id] = 0; });
     stores.forEach(function (s) {
-      for (var d = 0; d < 7; d++) {
+      days.forEach(function (day) {
         SLOTS.forEach(function (sl) {
-          assign[s.id][d][sl.id].forEach(function (pid) {
+          assign[s.id][day.key][sl.id].forEach(function (pid) {
             if (hours[pid] !== undefined) hours[pid] += sl.hours;
           });
         });
-      }
+      });
     });
     return hours;
   }
 
-  // 時間上限・かけもち・1日の枠数まで含めて、今この人を入れられるか
   function canAssign(assign, stores, person, store, day, slotId, hours) {
     if (!basicEligible(person, store, day, slotId)) return false;
     var sl = slotById(slotId);
     if (hours[person.id] + sl.hours > person.cap) return false;
-    var load = dayLoad(assign, stores, person.id, day);
+    var load = dayLoad(assign, stores, person.id, day.key);
     if (load.slots[slotId]) return false;
     if (load.count >= MAX_SLOTS_PER_DAY) return false;
     return true;
   }
 
-  // 優先度：上限に対する勤務割合が低い人ほど先（負担の偏りを防ぐ）。学生は土日の昼を優先。
   function priority(person, day, slotId, hours) {
     var ratio = person.cap > 0 ? hours[person.id] / person.cap : 1;
-    if (person.type === "学生" && WEEKEND[day] && slotId === "l") ratio -= 0.5;
+    if (person.type === "学生" && WEEKEND[day.dow] && slotId === "l") ratio -= 0.5;
     return ratio;
   }
 
@@ -111,22 +129,26 @@
     return cands[0] || null;
   }
 
-  function generate(stores, staff) {
-    var assign = emptySchedule(stores);
+  function findPerson(staff, id) {
+    for (var i = 0; i < staff.length; i++) if (staff[i].id === id) return staff[i];
+    return null;
+  }
+
+  function generate(stores, staff, days) {
+    var assign = emptySchedule(stores, days);
     var hours = {};
     staff.forEach(function (p) { hours[p.id] = 0; });
 
-    // 埋める必要のある枠の一覧。出られる人が少ない枠（埋めにくい枠）から順に処理する
     var needs = [];
     stores.forEach(function (s) {
-      for (var d = 0; d < 7; d++) {
+      days.forEach(function (day) {
         SLOTS.forEach(function (sl) {
-          if (!storeHasSlot(s, d, sl.id)) return;
-          var pool = staff.filter(function (p) { return basicEligible(p, s, d, sl.id); });
+          if (!storeHasSlot(s, day, sl.id)) return;
+          var pool = staff.filter(function (p) { return basicEligible(p, s, day, sl.id); });
           var vets = pool.filter(function (p) { return p.veteran; });
-          needs.push({ store: s, day: d, slot: sl.id, need: s.need[sl.id], poolSize: pool.length, vetSize: vets.length });
+          needs.push({ store: s, day: day, slot: sl.id, need: s.need[sl.id], poolSize: pool.length, vetSize: vets.length });
         });
-      }
+      });
     });
 
     // 1周目：各枠にベテランを1人ずつ（ベテランが少ない枠から）
@@ -139,19 +161,18 @@
       });
       var best = pickBest(cands, n.day, n.slot, hours);
       if (best) {
-        assign[n.store.id][n.day][n.slot].push(best.id);
+        assign[n.store.id][n.day.key][n.slot].push(best.id);
         hours[best.id] += slotById(n.slot).hours;
       }
     });
 
     // 2周目：残りの人数を埋める（出られる人が少ない枠から）
     needs.slice().sort(function (a, b) { return a.poolSize - b.poolSize; }).forEach(function (n) {
-      var cell = assign[n.store.id][n.day][n.slot];
+      var cell = assign[n.store.id][n.day.key][n.slot];
       while (cell.length < n.need) {
         var hasVet = cell.some(function (pid) { return findPerson(staff, pid).veteran; });
         var cands = staff.filter(function (p) {
           if (cell.indexOf(p.id) >= 0) return false;
-          // ベテランがまだいない枠に新人だけを入れない
           if (!hasVet && !p.veteran) return false;
           return canAssign(assign, stores, p, n.store, n.day, n.slot, hours);
         });
@@ -162,68 +183,62 @@
       }
     });
 
-    return { assign: assign, hours: hours, issues: findIssues(assign, stores, staff) };
+    return { assign: assign, hours: hours, issues: findIssues(assign, stores, staff, days) };
   }
 
-  function findPerson(staff, id) {
-    for (var i = 0; i < staff.length; i++) if (staff[i].id === id) return staff[i];
-    return null;
-  }
-
-  // 人手不足・ベテラン不在（＝清水さんの判断が必要な枠）と、ルール違反（本来ゼロであるべき）を洗い出す
-  function findIssues(assign, stores, staff) {
+  function findIssues(assign, stores, staff, days) {
     var shortages = [], noVeteran = [], violations = [];
-    var hours = computeHours(assign, stores, staff);
+    var hours = computeHours(assign, stores, staff, days);
     stores.forEach(function (s) {
-      for (var d = 0; d < 7; d++) {
+      days.forEach(function (day) {
         SLOTS.forEach(function (sl) {
-          var cell = assign[s.id][d][sl.id];
-          if (!storeHasSlot(s, d, sl.id)) {
-            if (cell.length) violations.push({ store: s.id, day: d, slot: sl.id, msg: "営業していない枠に人が入っています" });
+          var cell = assign[s.id][day.key][sl.id];
+          if (!storeHasSlot(s, day, sl.id)) {
+            if (cell.length) violations.push({ store: s.id, day: day.key, slot: sl.id, msg: "営業していない枠に人が入っています" });
             return;
           }
           var need = s.need[sl.id];
-          if (cell.length < need) shortages.push({ store: s.id, day: d, slot: sl.id, missing: need - cell.length });
+          if (cell.length < need) shortages.push({ store: s.id, day: day.key, slot: sl.id, missing: need - cell.length });
           if (!cell.some(function (pid) { var p = findPerson(staff, pid); return p && p.veteran; })) {
-            noVeteran.push({ store: s.id, day: d, slot: sl.id });
+            noVeteran.push({ store: s.id, day: day.key, slot: sl.id });
           }
           cell.forEach(function (pid) {
             var p = findPerson(staff, pid);
             if (!p) return;
-            if (!basicEligible(p, s, d, sl.id)) violations.push({ store: s.id, day: d, slot: sl.id, msg: p.name + "さんの希望・条件に合わない枠です" });
+            if (!basicEligible(p, s, day, sl.id)) violations.push({ store: s.id, day: day.key, slot: sl.id, msg: p.name + "さんの希望・条件に合わない枠です" });
           });
         });
-      }
+      });
     });
     staff.forEach(function (p) {
-      if (hours[p.id] > p.cap) violations.push({ msg: p.name + "さんが週の上限（" + p.cap + "時間）を超えています" });
-      for (var d = 0; d < 7; d++) {
-        var load = dayLoad(assign, stores, p.id, d);
-        if (load.count > MAX_SLOTS_PER_DAY) violations.push({ msg: p.name + "さんが" + DAYS[d] + "曜に" + load.count + "枠入っています" });
+      if (hours[p.id] > p.cap) violations.push({ msg: p.name + "さんが月の上限（" + p.cap + "時間）を超えています" });
+      days.forEach(function (day) {
+        var load = dayLoad(assign, stores, p.id, day.key);
+        if (load.count > MAX_SLOTS_PER_DAY) violations.push({ msg: p.name + "さんが" + day.key + "に" + load.count + "枠入っています" });
         var perSlot = {};
         stores.forEach(function (s) {
           SLOTS.forEach(function (sl) {
-            if (assign[s.id][d][sl.id].indexOf(p.id) >= 0) perSlot[sl.id] = (perSlot[sl.id] || 0) + 1;
+            if (assign[s.id][day.key][sl.id].indexOf(p.id) >= 0) perSlot[sl.id] = (perSlot[sl.id] || 0) + 1;
           });
         });
         Object.keys(perSlot).forEach(function (k) {
-          if (perSlot[k] > 1) violations.push({ msg: p.name + "さんが" + DAYS[d] + "曜の同じ時間に2店舗かけもちになっています" });
+          if (perSlot[k] > 1) violations.push({ msg: p.name + "さんが" + day.key + "の同じ時間に2店舗かけもちになっています" });
         });
-      }
+      });
     });
     return { shortages: shortages, noVeteran: noVeteran, violations: violations, hours: hours };
   }
 
   // 急な欠勤のときの代役候補。休む人がその枠の唯一のベテランなら、ベテランだけを候補にする
-  function substitutes(assign, stores, staff, storeId, day, slotId, absentId) {
+  function substitutes(assign, stores, staff, days, storeId, dayKey, slotId, absentId) {
     var store = stores.filter(function (s) { return s.id === storeId; })[0];
-    var cell = assign[storeId][day][slotId];
+    var day = days.filter(function (d) { return d.key === dayKey; })[0];
+    var cell = assign[storeId][dayKey][slotId];
     var others = cell.filter(function (pid) { return pid !== absentId; });
     var stillHasVet = others.some(function (pid) { var p = findPerson(staff, pid); return p && p.veteran; });
-    // 休む人の分の時間を引いた状態で計算する
     var trial = JSON.parse(JSON.stringify(assign));
-    trial[storeId][day][slotId] = others;
-    var hours = computeHours(trial, stores, staff);
+    trial[storeId][dayKey][slotId] = others;
+    var hours = computeHours(trial, stores, staff, days);
     var list = staff.filter(function (p) {
       if (p.id === absentId || others.indexOf(p.id) >= 0) return false;
       if (!stillHasVet && !p.veteran) return false;
@@ -236,8 +251,7 @@
   }
 
   // ---- サンプルデータ（架空の店舗・スタッフ）----
-  function availFrom(spec) {
-    // spec: { m: [曜日index...], l: [...], d: [...] }
+  function patFrom(spec) {
     var bits = [];
     for (var d = 0; d < 7; d++) {
       SLOTS.forEach(function (sl) { bits.push((spec[sl.id] || []).indexOf(d) >= 0 ? "1" : "0"); });
@@ -245,7 +259,6 @@
     return bits.join("");
   }
   var ALL = [0, 1, 2, 3, 4, 5, 6], WEEKDAYS = [0, 1, 2, 3, 4], WKND = [5, 6];
-  function without(arr, x) { return arr.filter(function (v) { return x.indexOf(v) < 0; }); }
 
   function sampleStores() {
     return [
@@ -255,27 +268,44 @@
     ];
   }
 
+  // cap は「月の上限時間」。pattern は「いつもの出られる時間帯」。
   function sampleStaff() {
     return [
-      { id: "s01", name: "佐藤", type: "正社員", veteran: true, stores: ["A", "B"], early: true, cap: 40, avail: availFrom({ m: without(ALL, [6]), l: without(ALL, [6]), d: without(ALL, [6]) }) },
-      { id: "s02", name: "鈴木", type: "正社員", veteran: true, stores: ["B", "C"], early: false, cap: 40, avail: availFrom({ l: without(ALL, [0]), d: without(ALL, [0]) }) },
-      { id: "s03", name: "高橋", type: "正社員", veteran: true, stores: ["A", "C"], early: true, cap: 40, avail: availFrom({ m: without(ALL, [5]), l: without(ALL, [5]), d: without(ALL, [5]) }) },
-      { id: "s04", name: "田中", type: "主婦パート", veteran: true, stores: ["A"], early: true, cap: 20, avail: availFrom({ m: WEEKDAYS, l: WEEKDAYS }) },
-      { id: "s05", name: "伊藤", type: "主婦パート", veteran: true, stores: ["B"], early: false, cap: 20, avail: availFrom({ l: WEEKDAYS }) },
-      { id: "s06", name: "渡辺", type: "主婦パート", veteran: false, stores: ["C"], early: false, cap: 20, avail: availFrom({ l: WEEKDAYS }) },
-      { id: "s07", name: "山本", type: "学生", veteran: true, stores: ["A", "B"], early: false, cap: 20, avail: availFrom({ l: WKND, d: [1, 3, 5, 6] }) },
-      { id: "s08", name: "中村", type: "学生", veteran: false, stores: ["B", "C"], early: false, cap: 20, avail: availFrom({ l: WKND, d: [0, 2, 4, 5, 6] }) },
-      { id: "s09", name: "小林", type: "学生", veteran: false, stores: ["A", "C"], early: false, cap: 20, avail: availFrom({ l: WKND, d: [1, 2, 4, 6] }) },
-      { id: "s10", name: "加藤", type: "フリーター", veteran: true, stores: ["A", "B", "C"], early: false, cap: 32, avail: availFrom({ l: without(ALL, [2]), d: without(ALL, [2]) }) },
-      { id: "s11", name: "吉田", type: "パート", veteran: false, stores: ["A", "B"], early: true, cap: 28, avail: availFrom({ m: without(ALL, [6]), l: without(ALL, [6]) }) },
-      { id: "s12", name: "山田", type: "パート", veteran: true, stores: ["C"], early: false, cap: 28, avail: availFrom({ l: WKND, d: ALL }) }
+      { id: "s01", name: "佐藤", type: "正社員", veteran: true, stores: ["A", "B"], early: true, cap: 160, pattern: patFrom({ m: ALL, l: ALL, d: ALL }), busy: [] },
+      { id: "s02", name: "鈴木", type: "正社員", veteran: true, stores: ["B", "C"], early: false, cap: 160, pattern: patFrom({ l: ALL, d: ALL }), busy: [] },
+      { id: "s03", name: "高橋", type: "正社員", veteran: true, stores: ["A", "C"], early: true, cap: 160, pattern: patFrom({ m: ALL, l: ALL, d: ALL }), busy: [] },
+      { id: "s04", name: "田中", type: "主婦パート", veteran: true, stores: ["A"], early: true, cap: 80, pattern: patFrom({ m: WEEKDAYS, l: WEEKDAYS }), busy: [] },
+      { id: "s05", name: "伊藤", type: "主婦パート", veteran: true, stores: ["B"], early: false, cap: 80, pattern: patFrom({ l: WEEKDAYS }), busy: [] },
+      { id: "s06", name: "渡辺", type: "主婦パート", veteran: false, stores: ["C"], early: false, cap: 80, pattern: patFrom({ l: WEEKDAYS }), busy: [] },
+      { id: "s07", name: "山本", type: "学生", veteran: true, stores: ["A", "B"], early: false, cap: 80, pattern: patFrom({ l: WKND, d: ALL }), busy: [] },
+      { id: "s08", name: "中村", type: "学生", veteran: false, stores: ["B", "C"], early: false, cap: 80, pattern: patFrom({ l: WKND, d: ALL }), busy: [] },
+      { id: "s09", name: "小林", type: "学生", veteran: false, stores: ["A", "C"], early: false, cap: 80, pattern: patFrom({ l: WKND, d: ALL }), busy: [] },
+      { id: "s10", name: "加藤", type: "フリーター", veteran: true, stores: ["A", "B", "C"], early: false, cap: 128, pattern: patFrom({ l: ALL, d: ALL }), busy: [] },
+      { id: "s11", name: "吉田", type: "パート", veteran: false, stores: ["A", "B"], early: true, cap: 112, pattern: patFrom({ m: ALL, l: ALL }), busy: [] },
+      { id: "s12", name: "山田", type: "パート", veteran: true, stores: ["C"], early: false, cap: 112, pattern: patFrom({ l: ALL, d: ALL }), busy: [] }
     ];
+  }
+
+  // デモ用：決まった「予定あり日」を各スタッフに入れる（毎回同じ結果になる擬似乱数）
+  function seedBusy(staff, days) {
+    staff.forEach(function (p, i) {
+      var seed = 7919 * (i + 3), n = (p.type === "学生" ? 8 : p.type === "正社員" ? 4 : 6);
+      var picks = [];
+      for (var k = 0; k < n; k++) {
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        var key = days[seed % days.length].key;
+        if (picks.indexOf(key) < 0) picks.push(key);
+      }
+      p.busy = picks.sort();
+    });
+    return staff;
   }
 
   return {
     DAYS: DAYS, SLOTS: SLOTS,
-    isAvailable: isAvailable, availIndex: availIndex, storeHasSlot: storeHasSlot,
+    monthDays: monthDays, patIndex: patIndex, inPattern: inPattern, isBusy: isBusy, isAvailable: isAvailable,
+    storeHasSlot: storeHasSlot,
     generate: generate, findIssues: findIssues, computeHours: computeHours, substitutes: substitutes,
-    sampleStores: sampleStores, sampleStaff: sampleStaff
+    sampleStores: sampleStores, sampleStaff: sampleStaff, seedBusy: seedBusy
   };
 });
