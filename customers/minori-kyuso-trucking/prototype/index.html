@@ -175,6 +175,7 @@
 
     <div class="scan-controls">
       <button class="primary" id="startBtn">カメラでスキャン開始</button>
+      <button class="ghost" id="torchBtn" hidden>ライトをつける</button>
       <button class="ghost" id="stopBtn" hidden>停止</button>
     </div>
     <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
@@ -192,7 +193,7 @@
 
     <div id="libStatus" class="sub" style="margin-top:8px; padding:6px 10px; background:var(--chip); border-radius:8px; display:inline-block;"></div>
 
-    <details style="margin-top:10px;">
+    <details id="manualDetails" style="margin-top:10px;">
       <summary class="sub" style="cursor:pointer;">読み取れないときは、コードを直接入力して試す</summary>
       <div style="display:flex; gap:8px; margin-top:8px;">
         <input id="manualCode" type="text" placeholder="例: MINORI-001" style="flex:1; padding:10px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); font-size:14px;">
@@ -450,10 +451,28 @@
   var ctx = canvas.getContext("2d", {willReadFrequently:true});
   var startBtn = document.getElementById("startBtn");
   var stopBtn = document.getElementById("stopBtn");
+  var torchBtn = document.getElementById("torchBtn");
+  var torchOn = false;
   var stream = null;
   var rafId = null;
   var lastCode = null;
   var lastCodeAt = 0;
+
+  // 薄暗い場所向け：全体が暗いとき、明るさとコントラストを自動で持ち上げてから読み取る
+  function boostIfDark(img){
+    var d = img.data, n = d.length, sum = 0, cnt = 0, lo = 255, hi = 0, i, y;
+    for (i = 0; i < n; i += 64){ y = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114); sum += y; cnt++; if (y < lo) lo = y; if (y > hi) hi = y; }
+    var mean = sum / cnt;
+    if (mean > 110 && hi - lo > 80) return;       // 十分明るく、コントラストもある
+    var range = Math.max(hi - lo, 30), k = 255 / range;
+    for (i = 0; i < n; i += 4){
+      y = (d[i]*0.299 + d[i+1]*0.587 + d[i+2]*0.114);
+      y = Math.max(0, Math.min(255, (y - lo) * k));
+      d[i] = d[i+1] = d[i+2] = y;
+    }
+  }
+
+  var scanStartedAt = 0, hintTimer = null, track = null;
 
   function tick(){
     if (video.readyState === video.HAVE_ENOUGH_DATA){
@@ -461,11 +480,13 @@
       canvas.height = video.videoHeight;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      var result = window.jsQR ? jsQR(img.data, img.width, img.height) : null;
+      boostIfDark(img);
+      var result = window.jsQR ? jsQR(img.data, img.width, img.height, {inversionAttempts:"attemptBoth"}) : null;
       if (result && result.data){
         var now = Date.now();
         if (result.data !== lastCode || now - lastCodeAt > 1200){
           lastCode = result.data; lastCodeAt = now;
+          clearTimeout(hintTimer);
           handleCode(result.data.trim());
         }
       }
@@ -482,9 +503,21 @@
       showMsg("QR読み取り用ライブラリが読み込めていないため、カメラ判定ができません。下の「コードを直接入力して試す」をお使いください。", "warn");
       return;
     }
-    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}})
+    navigator.mediaDevices.getUserMedia({video:{facingMode:"environment", width:{ideal:1280}, height:{ideal:720}}})
       .then(function(s){
         stream = s;
+        track = s.getVideoTracks()[0] || null;
+        try {
+          var caps = (track && track.getCapabilities) ? track.getCapabilities() : {};
+          if (caps.focusMode && caps.focusMode.indexOf("continuous") >= 0) track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(function(){});
+          torchBtn.hidden = !caps.torch;   // ライト非対応の端末ではボタンを出さない
+        } catch(e){ torchBtn.hidden = true; }
+        torchOn = false; torchBtn.textContent = "ライトをつける";
+        clearTimeout(hintTimer);
+        hintTimer = setTimeout(function(){
+          document.getElementById("manualDetails").open = true;
+          showMsg("読み取りにくいときは、ライトをつけるか、下にコードを直接入力してください。", "warn");
+        }, 8000);
         video.srcObject = s;
         video.hidden = false;
         video.play();
@@ -500,13 +533,22 @@
 
   function stopScan(){
     if (rafId) cancelAnimationFrame(rafId);
+    clearTimeout(hintTimer);
     if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
-    stream = null;
+    stream = null; track = null; torchOn = false;
+    torchBtn.hidden = true;
     video.hidden = true;
     startBtn.hidden = false;
     stopBtn.hidden = true;
   }
 
+  torchBtn.addEventListener("click", function(){
+    if (!track) return;
+    torchOn = !torchOn;
+    track.applyConstraints({advanced:[{torch:torchOn}]}).then(function(){
+      torchBtn.textContent = torchOn ? "ライトを消す" : "ライトをつける";
+    }).catch(function(){ torchOn = !torchOn; showMsg("この端末ではライトを操作できませんでした。", "warn"); });
+  });
   startBtn.addEventListener("click", startScan);
   stopBtn.addEventListener("click", stopScan);
 
