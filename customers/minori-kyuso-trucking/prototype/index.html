@@ -178,6 +178,10 @@
       <button class="ghost" id="torchBtn" hidden>ライトをつける</button>
       <button class="ghost" id="stopBtn" hidden>停止</button>
     </div>
+    <div id="brightWrap" hidden style="margin-top:10px; padding:8px 10px; background:var(--chip); border-radius:10px;">
+      <label class="sub" for="brightRange" style="display:block; margin-bottom:4px;">明るさ調整（シールが反射して読めないときは下げる）</label>
+      <input id="brightRange" type="range" style="width:100%;">
+    </div>
     <div id="scanMsg" class="toast" style="margin-top:10px;"></div>
 
     <div id="qtyCard" class="qty-card">
@@ -453,6 +457,9 @@
   var stopBtn = document.getElementById("stopBtn");
   var torchBtn = document.getElementById("torchBtn");
   var torchOn = false;
+  var brightWrap = document.getElementById("brightWrap");
+  var brightRange = document.getElementById("brightRange");
+  var brightKey = null;
   var stream = null;
   var rafId = null;
   var lastCode = null;
@@ -511,6 +518,15 @@
           var caps = (track && track.getCapabilities) ? track.getCapabilities() : {};
           if (caps.focusMode && caps.focusMode.indexOf("continuous") >= 0) track.applyConstraints({advanced:[{focusMode:"continuous"}]}).catch(function(){});
           torchBtn.hidden = !caps.torch;   // ライト非対応の端末ではボタンを出さない
+          // 明るさ調整（カメラの露出補正）。非対応の端末ではスライダーを出さない
+          var key = caps.exposureCompensation ? "exposureCompensation" : (caps.brightness ? "brightness" : null);
+          if (key){
+            var c = caps[key], st = (track.getSettings && track.getSettings()) || {};
+            brightKey = key;
+            brightRange.min = c.min; brightRange.max = c.max; brightRange.step = c.step || ((c.max - c.min) / 20);
+            brightRange.value = (st[key] !== undefined) ? st[key] : (c.min + c.max) / 2;
+            brightWrap.hidden = false;
+          } else { brightKey = null; brightWrap.hidden = true; }
         } catch(e){ torchBtn.hidden = true; }
         torchOn = false; torchBtn.textContent = "ライトをつける";
         clearTimeout(hintTimer);
@@ -535,8 +551,8 @@
     if (rafId) cancelAnimationFrame(rafId);
     clearTimeout(hintTimer);
     if (stream) stream.getTracks().forEach(function(t){ t.stop(); });
-    stream = null; track = null; torchOn = false;
-    torchBtn.hidden = true;
+    stream = null; track = null; torchOn = false; brightKey = null;
+    torchBtn.hidden = true; brightWrap.hidden = true;
     video.hidden = true;
     startBtn.hidden = false;
     stopBtn.hidden = true;
@@ -548,6 +564,11 @@
     track.applyConstraints({advanced:[{torch:torchOn}]}).then(function(){
       torchBtn.textContent = torchOn ? "ライトを消す" : "ライトをつける";
     }).catch(function(){ torchOn = !torchOn; showMsg("この端末ではライトを操作できませんでした。", "warn"); });
+  });
+  brightRange.addEventListener("input", function(){
+    if (!track || !brightKey) return;
+    var c = {}; c[brightKey] = parseFloat(brightRange.value);
+    track.applyConstraints({advanced:[c]}).catch(function(){});
   });
   startBtn.addEventListener("click", startScan);
   stopBtn.addEventListener("click", stopScan);
