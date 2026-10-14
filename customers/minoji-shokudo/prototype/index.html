@@ -146,8 +146,11 @@
       <p class="sub" id="staffMonthLabel"></p>
     </header>
     <section class="card">
-      <label class="f" for="meSel">あなたの名前</label>
-      <select id="meSel"></select>
+      <div id="meSelWrap">
+        <label class="f" for="meSel">あなたの名前（お試し用の選択画面）</label>
+        <select id="meSel"></select>
+      </div>
+      <p id="meFixed" hidden style="margin:0; font-size:16px; font-weight:700;"></p>
       <p class="sub" style="margin:12px 0 8px;"><b style="color:var(--ink)">予定がある日だけ</b>タップしてください（赤＝予定あり）。タップしなかった日は「出られる」として扱います。</p>
       <div class="cal" id="cal"></div>
       <div class="count"><span class="c-busy" id="cntBusy"></span><span class="c-free" id="cntFree"></span></div>
@@ -162,6 +165,7 @@
       <p class="sub" style="margin-top:8px;">送り先は<b>店長との個別トーク</b>を選んでください。店長がリンクをタップすると、希望が自動で取り込まれます。</p>
     </section>
     <div class="note" style="margin-top:14px;">あなたの希望を見られるのは店長だけです。ほかのスタッフの希望は、この画面には表示されません。</div>
+    <p class="sub" id="lockNote" hidden style="margin-top:10px;">このリンクはあなた専用です。ほかの人には転送しないでください。</p>
   </div>
 
   <!-- ===== 店長用 ===== -->
@@ -194,9 +198,11 @@
     </section>
 
     <section id="panelRules" class="card" hidden>
-      <p class="sub" style="margin:0 0 8px; font-weight:700; color:var(--ink);">毎月のお願いの出し方</p>
-      <button class="line full" id="askLineBtn">スタッフに希望提出をお願いする（LINE）</button>
-      <p class="sub" style="margin:8px 0 0;">スタッフ全員のグループに1回送るだけです。届いたリンクからは「自分の予定」だけ入力でき、他の人の希望は見えません。</p>
+      <p class="sub" style="margin:0 0 8px; font-weight:700; color:var(--ink);">毎月のお願い：スタッフごとの専用リンク</p>
+      <p class="sub" style="margin:0 0 6px;">名前の横のボタンを押すと、その人専用のリンクつきの文面がLINEに開きます。<b>必ずその人との個別トークに送ってください</b>（グループに送ると、ほかの人の名前で出せてしまいます）。</p>
+      <ul class="req-list" id="linkList"></ul>
+      <details id="otherLinks"><summary>ほかの店舗のスタッフ（モニター対象外）</summary><ul class="req-list" id="linkListOther"></ul></details>
+      <p class="sub" style="margin:8px 0 0;">リンクを開いた人は「自分の予定」だけ入力でき、ほかの人の名前や希望は見えません。本番では、一人ひとりのLINEログインで本人確認します（このお試し版は専用リンクで代用）。</p>
 
       <p class="sub" style="margin:18px 0 8px; font-weight:700; color:var(--ink);">自動作成で守っているルール</p>
       <ul class="rules">
@@ -282,6 +288,24 @@
     document.getElementById("staffApp").hidden = false;
     document.getElementById("staffMonthLabel").textContent = "美濃路食堂・" + MONTH_LABEL + "分";
     document.getElementById("foot").textContent = "精神と時の部屋・仮想フェーズのお試しプロトタイプ（入力内容はこの端末と、あなたが送ったLINEの中だけにあります）";
+
+    // ---- 専用リンク（?staff=s01 のように本人のIDが付いているとき）：名前を固定し、ほかの人の名前は出さない ----
+    var lockedId = params.get("staff") || "";
+    if (lockedId){
+      var who = names.filter(function(p){ return p.id === lockedId; })[0];
+      if (!who){
+        document.querySelector("#staffApp .card").innerHTML =
+          '<p style="margin:0; font-weight:700;">このリンクは正しくないようです</p>' +
+          '<p class="sub" style="margin-top:8px;">店長に、あなた専用のリンクをもう一度送ってもらってください。</p>';
+        document.querySelector("#staffApp .note").hidden = true;
+        return;
+      }
+      st.me = lockedId; save();
+      document.getElementById("meSelWrap").hidden = true;
+      var fixed = document.getElementById("meFixed");
+      fixed.textContent = who.name + "さん専用のページ"; fixed.hidden = false;
+      document.getElementById("lockNote").hidden = false;
+    }
 
     var sel = document.getElementById("meSel");
     sel.innerHTML = names.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + "（" + esc(p.type) + "）</option>"; }).join("");
@@ -382,7 +406,7 @@
         tabs[k].slice(1).forEach(function(id){ document.getElementById(id).hidden = k !== name; });
       });
       if (name === "shift") renderShift();
-      if (name === "rules") renderStaff();
+      if (name === "rules") { renderStaff(); renderLinks(); }
     }
     document.getElementById("tabShift").onclick = function(){ setTab("shift"); };
     document.getElementById("tabRules").onclick = function(){ setTab("rules"); };
@@ -516,11 +540,25 @@
     };
 
     // ---- スタッフ・ルール ----
-    document.getElementById("askLineBtn").onclick = function(){
-      var text = "【" + MONTH.m + "月のシフト希望のお願い】\n予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。\n" +
-        "ほかの人には見えません。\n\n▼入力はこちら\n" + BASE_URL + "?staff&month=" + MONTH_KEY;
-      openLine(text);
-    };
+    // 専用リンク：本人のIDつき。本店（A）のスタッフをモニター対象として先に出す
+    function personalLink(p){ return BASE_URL + "?staff=" + p.id + "&month=" + MONTH_KEY; }
+    function renderLinks(){
+      function row(p){
+        return '<li class="row" style="justify-content:space-between; flex-wrap:nowrap;"><span><span class="who-n">' + esc(p.name) + "</span>（" + esc(p.type) + "）" +
+          (state.submitted[p.id] ? ' <span class="badge ok" style="padding:2px 6px;">提出ずみ</span>' : "") + "</span>" +
+          '<button class="line" data-link="' + p.id + '" style="padding:7px 12px; font-size:13px;">LINEで送る</button></li>';
+      }
+      var main = state.staff.filter(function(p){ return p.stores.indexOf("A") >= 0; });
+      var other = state.staff.filter(function(p){ return p.stores.indexOf("A") < 0; });
+      document.getElementById("linkList").innerHTML = main.map(row).join("");
+      document.getElementById("linkListOther").innerHTML = other.map(row).join("");
+    }
+    document.getElementById("panelRules").addEventListener("click", function(e){
+      var b = e.target.closest("button[data-link]"); if (!b) return;
+      var p = person(b.dataset.link);
+      openLine("【" + MONTH.m + "月のシフト希望のお願い】" + p.name + "さん\n予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。\n" +
+        "このリンクはあなた専用です。ほかの人には転送しないでください。\n\n▼入力はこちら\n" + personalLink(p));
+    });
     function renderStaff(){
       var html = "<tr><th>名前</th><th>区分</th><th>ベテラン</th><th>店舗</th><th>早朝</th><th>月上限</th></tr>";
       state.staff.forEach(function(p){
@@ -539,7 +577,7 @@
       toast("変更しました。シフト表で作り直してください");
     };
     document.getElementById("resetBtn").onclick = function(){
-      state = fresh(); save(); renderStaff(); toast("サンプルデータに戻しました");
+      state = fresh(); save(); renderStaff(); renderLinks(); toast("サンプルデータに戻しました");
     };
 
     renderShift();
