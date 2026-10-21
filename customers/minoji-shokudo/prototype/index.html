@@ -444,7 +444,12 @@
       var miss = state.staff.filter(function(p){ return !state.submitted[p.id]; });
       document.getElementById("reqStatus").innerHTML =
         '<span class="badge ' + (miss.length ? "warn" : "ok") + '">' + state.staff.length + "人中 " + done.length + "人 提出ずみ</span>" +
-        (miss.length ? '<p class="sub" style="margin-top:6px; color:var(--warn); font-weight:700;">未提出：' + miss.map(function(p){ return esc(p.name); }).join("、") + "</p>" : "");
+        (miss.length ? '<p class="sub" style="margin-top:6px; color:var(--warn); font-weight:700;">未提出：' + miss.map(function(p){ return esc(p.name); }).join("、") + "</p>" +
+          '<p class="sub" style="margin-top:4px;">出し忘れの人には、一人ずつ催促を送れます（専用リンクつきなので、グループには送らないでください）。</p>' +
+          '<ul class="req-list" id="nudgeList">' + miss.map(function(p){
+            return '<li class="row" style="justify-content:space-between; flex-wrap:nowrap;"><span class="who-n">' + esc(p.name) + "</span>" +
+              '<button class="line" data-nudge="' + p.id + '" style="padding:7px 12px; font-size:13px;">催促をLINEで送る</button></li>';
+          }).join("") + "</ul>" : "");
       document.getElementById("reqList").innerHTML = state.staff.map(function(p){
         if (!state.submitted[p.id]) return '<li><span class="who-n">' + esc(p.name) + '</span> <span class="miss">未提出</span></li>';
         var days = DAYS.filter(function(d){ return p.busy.indexOf(d.key) >= 0; }).map(function(d){ return d.dom; });
@@ -583,6 +588,13 @@
       document.getElementById("linkList").innerHTML = main.map(row).join("");
       document.getElementById("linkListOther").innerHTML = other.map(row).join("");
     }
+    // 催促：まだ提出していない人に、専用リンクつきで一人ずつ送る
+    document.getElementById("reqStatus").addEventListener("click", function(e){
+      var b = e.target.closest("button[data-nudge]"); if (!b) return;
+      var p = person(b.dataset.nudge); if (!p) return;
+      openLine("【" + MONTH.m + "月のシフト希望の提出のお願い】" + p.name + "さん\nまだ希望をいただけていないようです。お手数ですが、予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。\n" +
+        "このリンクはあなた専用です。ほかの人には転送しないでください。\n\n▼入力はこちら\n" + personalLink(p));
+    });
     document.getElementById("panelRules").addEventListener("click", function(e){
       var b = e.target.closest("button[data-link]"); if (!b) return;
       var p = person(b.dataset.link);
