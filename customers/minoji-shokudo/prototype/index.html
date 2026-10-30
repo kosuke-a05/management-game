@@ -53,6 +53,10 @@
     font-size:14px; font-weight:600; cursor:pointer;}
   button.line{background:#06c755; color:#fff; border:none; border-radius:10px; padding:12px 16px; font-size:14px; font-weight:700; cursor:pointer;}
   .full{width:100%;}
+  textarea.nudge{width:100%; box-sizing:border-box; font-size:15px; line-height:1.6; padding:10px; border-radius:10px;
+    border:1px solid var(--line); background:var(--bg); color:var(--ink); font-family:inherit; resize:vertical;}
+  .nudge-preview{white-space:pre-wrap; background:var(--bg); border:1px dashed var(--line); border-radius:10px; padding:10px;
+    font-size:13px; line-height:1.6; margin:8px 0 0;}
   .note{background:var(--ok-bg); color:var(--ok); border-radius:10px; padding:9px 12px; font-size:12.5px; font-weight:600; line-height:1.55;}
   .caution{background:var(--warn-bg); color:var(--warn); border-radius:10px; padding:9px 12px; font-size:12.5px; font-weight:600; line-height:1.55;}
 
@@ -209,6 +213,17 @@
       <ul class="req-list" id="linkList"></ul>
       <details id="otherLinks"><summary>ほかの店舗のスタッフ（モニター対象外）</summary><ul class="req-list" id="linkListOther"></ul></details>
       <p class="sub" style="margin:8px 0 0;">リンクを開いた人は「自分の予定」だけ入力でき、ほかの人の名前や希望は見えません。本番では、一人ひとりのLINEログインで本人確認します（このお試し版は専用リンクで代用）。</p>
+
+      <p class="sub" style="margin:18px 0 8px; font-weight:700; color:var(--ink);" id="nudgeEditTitle">出し忘れの催促の文面（お店の言い方に書き換えられます）</p>
+      <p class="sub" style="margin:0 0 6px;"><b>{名前}</b> と <b>{月}</b> は、送るときに本人の名前と月に自動で置き換わります。文面の最後には、「あなた専用のリンクです。転送しないでください」の注意書きと専用リンクが自動で付きます（消せません）。</p>
+      <textarea class="nudge" id="nudgeText" rows="5" maxlength="300" aria-label="催促の文面"></textarea>
+      <div class="row" style="margin-top:8px;">
+        <button class="primary" id="nudgeSave">この文面を保存</button>
+        <button class="ghost" id="nudgeReset">最初の文面に戻す</button>
+      </div>
+      <p class="sub" style="margin:10px 0 0;" id="nudgePreviewLabel">送られる文面の見本</p>
+      <div class="nudge-preview" id="nudgePreview"></div>
+      <p class="sub" style="margin:8px 0 0;">書き換えた文面は、<b>この端末の中だけ</b>に保存されます。当社のサーバーには送られません（端末を変えると最初の文面に戻ります）。</p>
 
       <p class="sub" style="margin:18px 0 8px; font-weight:700; color:var(--ink);">自動作成で守っているルール</p>
       <ul class="rules">
@@ -433,7 +448,7 @@
         tabs[k].slice(1).forEach(function(id){ document.getElementById(id).hidden = k !== name; });
       });
       if (name === "shift") renderShift();
-      if (name === "rules") { renderStaff(); renderLinks(); }
+      if (name === "rules") { renderStaff(); renderLinks(); renderNudgeEditor(); }
     }
     document.getElementById("tabShift").onclick = function(){ setTab("shift"); };
     document.getElementById("tabRules").onclick = function(){ setTab("rules"); };
@@ -445,7 +460,7 @@
       document.getElementById("reqStatus").innerHTML =
         '<span class="badge ' + (miss.length ? "warn" : "ok") + '">' + state.staff.length + "人中 " + done.length + "人 提出ずみ</span>" +
         (miss.length ? '<p class="sub" style="margin-top:6px; color:var(--warn); font-weight:700;">未提出：' + miss.map(function(p){ return esc(p.name); }).join("、") + "</p>" +
-          '<p class="sub" style="margin-top:4px;">出し忘れの人には、一人ずつ催促を送れます（専用リンクつきなので、グループには送らないでください）。</p>' +
+          '<p class="sub" style="margin-top:4px;">出し忘れの人には、一人ずつ催促を送れます（専用リンクつきなので、グループには送らないでください）。<button class="ghost" data-nudge-edit="1" style="padding:4px 10px; font-size:12px; margin-left:4px;">文面を書き換える</button></p>' +
           '<ul class="req-list" id="nudgeList">' + miss.map(function(p){
             return '<li class="row" style="justify-content:space-between; flex-wrap:nowrap;"><span class="who-n">' + esc(p.name) + "</span>" +
               '<button class="line" data-nudge="' + p.id + '" style="padding:7px 12px; font-size:13px;">催促をLINEで送る</button></li>';
@@ -588,12 +603,52 @@
       document.getElementById("linkList").innerHTML = main.map(row).join("");
       document.getElementById("linkListOther").innerHTML = other.map(row).join("");
     }
+    // 催促の文面：店長が書き換えられる。保存先はこの端末の中（localStorage）だけ。専用リンクと注意書きは自動で付く
+    var NUDGE_KEY = "minoji-nudge-text-v1";
+    var NUDGE_DEFAULT = "【{月}月のシフト希望の提出のお願い】{名前}さん\nまだ希望をいただけていないようです。お手数ですが、予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。";
+    function loadNudge(){
+      try { var t = localStorage.getItem(NUDGE_KEY); if (t && t.trim()) return t; } catch(e){}
+      return NUDGE_DEFAULT;
+    }
+    function saveNudge(t){
+      try {
+        if (!t.trim() || t.trim() === NUDGE_DEFAULT.trim()) localStorage.removeItem(NUDGE_KEY);
+        else localStorage.setItem(NUDGE_KEY, t.replace(/\s+$/, ""));
+      } catch(e){}
+    }
+    function fillNudge(tpl, p){ return tpl.split("{名前}").join(p.name).split("{月}").join(String(MONTH.m)); }
+    function nudgeMessage(p, tpl){
+      return fillNudge(tpl == null ? loadNudge() : tpl, p).replace(/\s+$/, "") +
+        "\nこのリンクはあなた専用です。ほかの人には転送しないでください。\n\n▼入力はこちら\n" + personalLink(p);
+    }
+    function renderNudgePreview(){
+      var tpl = document.getElementById("nudgeText").value;
+      var p = state.staff[0] || { name: "〇〇", id: "x", type: "", early: false };
+      var shown = nudgeMessage(p, tpl);
+      // 見本ではリンクの中身は見せず「（専用リンク）」と表示する
+      document.getElementById("nudgePreview").textContent = shown.replace(/https?:\/\/\S+/g, "（その人専用のリンク）");
+      document.getElementById("nudgePreviewLabel").textContent = "送られる文面の見本（" + p.name + "さんに送る場合）";
+    }
+    function renderNudgeEditor(){
+      document.getElementById("nudgeText").value = loadNudge();
+      renderNudgePreview();
+    }
+    document.getElementById("nudgeText").addEventListener("input", renderNudgePreview);
+    document.getElementById("nudgeSave").onclick = function(){
+      var v = document.getElementById("nudgeText").value;
+      if (!v.trim()){ toast("文面が空です。「最初の文面に戻す」を押すと元に戻せます"); return; }
+      saveNudge(v); renderNudgeEditor(); toast("催促の文面を保存しました（この端末の中だけ）");
+    };
+    document.getElementById("nudgeReset").onclick = function(){
+      saveNudge(NUDGE_DEFAULT); renderNudgeEditor(); toast("最初の文面に戻しました");
+    };
     // 催促：まだ提出していない人に、専用リンクつきで一人ずつ送る
     document.getElementById("reqStatus").addEventListener("click", function(e){
+      var ed = e.target.closest("button[data-nudge-edit]");
+      if (ed){ setTab("rules"); var t = document.getElementById("nudgeEditTitle"); if (t && t.scrollIntoView) t.scrollIntoView({ block: "start" }); return; }
       var b = e.target.closest("button[data-nudge]"); if (!b) return;
       var p = person(b.dataset.nudge); if (!p) return;
-      openLine("【" + MONTH.m + "月のシフト希望の提出のお願い】" + p.name + "さん\nまだ希望をいただけていないようです。お手数ですが、予定がある日だけ押して送ってください（押さなかった日は出られる扱いです）。\n" +
-        "このリンクはあなた専用です。ほかの人には転送しないでください。\n\n▼入力はこちら\n" + personalLink(p));
+      openLine(nudgeMessage(p));
     });
     document.getElementById("panelRules").addEventListener("click", function(e){
       var b = e.target.closest("button[data-link]"); if (!b) return;
