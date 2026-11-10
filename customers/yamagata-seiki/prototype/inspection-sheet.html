@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>チェック式 検査表（サンプル・仮想）</title>
+<style>
+  :root{ --ink:#1b1b1b; --sub:#555; --line:#222; --soft:#f3f3ef; --accent:#1f5c4a; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#e8e8e4; color:var(--ink); font-family:"Hiragino Sans","Noto Sans JP","Yu Gothic",sans-serif; }
+  .note{ max-width:210mm; margin:12px auto; padding:12px 16px; background:#fff; border-left:4px solid var(--accent); font-size:13px; line-height:1.7; }
+  .note b{ color:var(--accent); }
+  .note ul{ margin:6px 0 0; padding-left:1.2em; }
+  .sheet{ position:relative; width:210mm; height:297mm; margin:12px auto; background:#fff; padding:14mm 14mm 10mm; box-shadow:0 1px 6px rgba(0,0,0,.18); }
+  /* 読み取り用の四隅マーク（撮影した写真の傾きを直すため） */
+  .mk{ position:absolute; width:7mm; height:7mm; background:#000; }
+  .mk.tl{ left:5mm; top:5mm; } .mk.tr{ right:5mm; top:5mm; } .mk.bl{ left:5mm; bottom:5mm; } .mk.br{ right:5mm; bottom:5mm; }
+  h1{ font-size:16pt; margin:0 0 2mm; letter-spacing:.04em; }
+  .sub{ font-size:8.5pt; color:var(--sub); margin:0 0 3mm; }
+  .head{ display:grid; grid-template-columns:1fr 26mm; gap:4mm; align-items:stretch; margin-bottom:3mm; }
+  .meta{ border:1.2px solid var(--line); }
+  .meta .r{ display:grid; grid-template-columns:24mm 1fr; border-bottom:1px solid var(--line); min-height:9mm; align-items:center; }
+  .meta .r:last-child{ border-bottom:0; }
+  .meta .r > span:first-child{ background:var(--soft); padding:0 2mm; font-size:9pt; font-weight:700; height:100%; display:flex; align-items:center; border-right:1px solid var(--line); }
+  .meta .r > span:last-child{ padding:0 3mm; font-size:10.5pt; display:flex; gap:4mm; align-items:center; flex-wrap:wrap; }
+  .qr{ border:1.2px solid var(--line); display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; font-size:7pt; color:var(--sub); padding:1mm; }
+  .qr svg{ width:19mm; height:19mm; }
+  .opt{ display:inline-flex; align-items:center; gap:1.5mm; }
+  .box{ display:inline-block; width:6mm; height:6mm; border:1.4px solid var(--line); border-radius:1mm; }
+  .circ{ display:inline-block; width:6mm; height:6mm; border:1.4px solid var(--line); border-radius:50%; }
+  table.chk{ width:100%; border-collapse:collapse; margin-top:3mm; table-layout:fixed; }
+  table.chk th, table.chk td{ border:1px solid var(--line); text-align:center; padding:0; }
+  table.chk thead th{ background:var(--soft); font-size:8pt; padding:1.2mm 0; }
+  table.chk .item{ width:30mm; font-size:9pt; text-align:left; padding:1.5mm 2mm; background:var(--soft); }
+  table.chk .item b{ font-size:10pt; display:block; }
+  table.chk .item small{ color:var(--sub); font-size:7.5pt; }
+  table.chk .no{ width:8mm; font-size:9pt; font-weight:700; }
+  .bub{ height:10.5mm; vertical-align:middle; }
+  .bub i{ display:inline-flex; width:7.2mm; height:7.2mm; border:1.3px solid var(--line); border-radius:50%; align-items:center; justify-content:center; font-style:normal; font-size:6.2pt; line-height:1; letter-spacing:-.02em; }
+  .bub.out i{ border-style:dashed; font-size:6pt; }
+  .bub.base i{ border-width:2.2px; }
+  .legend{ font-size:8pt; color:var(--sub); margin:2mm 0 0; line-height:1.6; }
+  .judge{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:4mm; }
+  .judge .card{ border:1.2px solid var(--line); }
+  .judge .card h3{ margin:0; font-size:9pt; background:var(--soft); padding:1.5mm 2.5mm; border-bottom:1px solid var(--line); }
+  .judge .card .body{ padding:3mm; display:flex; gap:6mm; flex-wrap:wrap; font-size:10.5pt; align-items:center; }
+  .foot{ position:absolute; left:14mm; right:14mm; bottom:11mm; font-size:7.5pt; color:var(--sub); display:flex; justify-content:space-between; }
+  @media print{
+    body{ background:#fff; }
+    .note{ display:none; }
+    .sheet{ margin:0; box-shadow:none; }
+    @page{ size:A4; margin:0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="note">
+  <b>これは「チェック式の検査表」のサンプルです。</b>部品も数字もすべて仮想（架空）で、山県精機の実際の様式ではありません。印刷するとA4で1枚です。
+  <ul>
+    <li><b>数字を書かない</b>：測った値に近い丸を、太いペンでぬりつぶすか×を付けるだけ。手が汚れていても、手袋でも、読み間違いが起きにくい。</li>
+    <li><b>事務所で撮影して取り込む</b>：四隅の黒い四角と右上のQR（ロット番号）で、写真から位置とロットを自動で読み取る想定。現場の手間は増えない。</li>
+    <li><b>まだ決まっていないこと</b>：取引先ごとの様式との関係、実測値が必要な項目、ロット番号の付け方、紙の素材。大野さん・田村さんへの面談で確認する。</li>
+  </ul>
+</div>
+
+<div class="sheet">
+  <div class="mk tl"></div><div class="mk tr"></div><div class="mk bl"></div><div class="mk br"></div>
+
+  <h1>寸法検査表（サンプル）</h1>
+  <p class="sub">丸の中の数字は「測った値」です。いちばん近い丸を太いペンでぬりつぶしてください。数字は書きません。</p>
+
+  <div class="head">
+    <div class="meta">
+      <div class="r"><span>日付</span><span>2027年 5月 12日（印刷ずみ）</span></div>
+      <div class="r"><span>品番</span><span>SAMPLE-A001（仮想の部品）</span></div>
+      <div class="r"><span>ロット</span><span>LOT-0001（印刷ずみ）</span></div>
+      <div class="r"><span>検査員</span><span>
+        <label class="opt"><span class="circ"></span>A</label>
+        <label class="opt"><span class="circ"></span>B</label>
+        <label class="opt"><span class="circ"></span>C</label>
+        <label class="opt"><span class="circ"></span>D</label>
+        <label class="opt"><span class="circ"></span>E</label>
+      </span></div>
+    </div>
+    <div class="qr">
+      <!-- 本番では、ロット番号を入れたQRコードを印刷します（ここは場所の見本） -->
+      <svg viewBox="0 0 21 21" aria-hidden="true">
+        <rect width="21" height="21" fill="#fff"/>
+        <g fill="#000">
+          <rect x="0" y="0" width="7" height="7"/><rect x="14" y="0" width="7" height="7"/><rect x="0" y="14" width="7" height="7"/>
+        </g>
+        <g fill="#fff"><rect x="1" y="1" width="5" height="5"/><rect x="15" y="1" width="5" height="5"/><rect x="1" y="15" width="5" height="5"/></g>
+        <g fill="#000"><rect x="2" y="2" width="3" height="3"/><rect x="16" y="2" width="3" height="3"/><rect x="2" y="16" width="3" height="3"/>
+          <rect x="9" y="1" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="9" y="5" width="2" height="1"/>
+          <rect x="8" y="9" width="2" height="2"/><rect x="12" y="9" width="1" height="3"/><rect x="15" y="10" width="3" height="1"/>
+          <rect x="10" y="13" width="2" height="2"/><rect x="14" y="14" width="2" height="2"/><rect x="17" y="16" width="2" height="3"/><rect x="9" y="17" width="3" height="1"/></g>
+      </svg>
+      ロットのQR<br>（見本）
+    </div>
+  </div>
+
+  <table class="chk" id="grid">
+    <thead>
+      <tr>
+        <th class="item">項目</th><th class="no">個</th>
+        <th colspan="13">測った値（いちばん近い丸をぬりつぶす）</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p class="legend">
+    破線の丸は「基準の範囲より小さい／大きい」。太い丸は基準の値。範囲を外れたときは、破線の丸をぬりつぶし、下の「判定」で不合格にチェックしてください。
+  </p>
+
+  <div class="judge">
+    <div class="card">
+      <h3>外観（キズ・バリ・さび）</h3>
+      <div class="body">
+        <label class="opt"><span class="box"></span>問題なし</label>
+        <label class="opt"><span class="box"></span>気になる点あり</label>
+      </div>
+    </div>
+    <div class="card">
+      <h3>このロットの判定</h3>
+      <div class="body">
+        <label class="opt"><span class="box"></span>合格</label>
+        <label class="opt"><span class="box"></span>不合格</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot"><span>※仮想の部品・架空のデータ。実在の取引先・図面とは関係ありません。</span><span>コエカタチ 試作（検討用）</span></div>
+</div>
+
+<script>
+(function(){
+  // 仮想の3項目。基準値と刻みから、丸に印刷する値を作る
+  var ITEMS = [
+    { name:"外径", unit:"mm", base:20.00, step:0.01, dec:2, note:"基準 20.00 ±0.05" },
+    { name:"全長", unit:"mm", base:50.00, step:0.02, dec:2, note:"基準 50.00 ±0.10" },
+    { name:"深さ", unit:"mm", base:12.0,  step:0.1,  dec:1, note:"基準 12.0 ±0.5" }
+  ];
+  var PIECES = 3;   // 1ロットで測る個数（仮）
+  var HALF = 5;     // 基準から片側5段階
+  var tbody = document.querySelector("#grid tbody");
+  var thead = document.querySelector("#grid thead tr");
+  var html = "";
+  ITEMS.forEach(function(it, ii){
+    for (var p = 1; p <= PIECES; p++){
+      html += "<tr>";
+      if (p === 1) html += '<td class="item" rowspan="' + PIECES + '"><b>' + it.name + '</b><small>' + it.note + ' ' + it.unit + '</small></td>';
+      html += '<td class="no">' + p + "</td>";
+      html += '<td class="bub out"><i>小</i></td>';
+      for (var k = -HALF; k <= HALF; k++){
+        var v = (it.base + k * it.step).toFixed(it.dec);
+        html += '<td class="bub' + (k === 0 ? " base" : "") + '"><i>' + v + "</i></td>";
+      }
+      html += '<td class="bub out"><i>大</i></td>';
+      html += "</tr>";
+    }
+  });
+  tbody.innerHTML = html;
+})();
+</script>
+</body>
+</html>
